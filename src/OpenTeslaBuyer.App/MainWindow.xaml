@@ -1,0 +1,58 @@
+<Window x:Class="OpenTeslaBuyer.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:OpenTeslaBuyer.App.Views"
+        Title="OpenTeslaBuyer"
+        Width="1376" Height="880" MinWidth="1096" MinHeight="680"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="88" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left menu -->
+        <ListBox Grid.Column="0" Margin="8,16,0,16" Background="Transparent" BorderThickness="0"
+                 ItemsSource="{Binding Pages}" SelectedItem="{Binding SelectedPage}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                    <Setter Property="Padding" Value="4,10" />
+                    <Setter Property="Margin" Value="0,2" />
+                    <Setter Property="HorizontalContentAlignment" Value="Center" />
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Width="64" ToolTip="{Binding Title}">
+                        <TextBlock HorizontalAlignment="Center" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="20" Text="{Binding Glyph}" />
+                        <TextBlock HorizontalAlignment="Center" Margin="0,5,0,0" FontSize="11" Text="{Binding Title}"
+                                   TextAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Pages; all stay alive so each keeps its state when you switch -->
+        <Grid Grid.Column="1">
+            <Border Visibility="{Binding IsDiagnostics, Converter={StaticResource VisibleWhenTrue}}">
+                <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
+            </Border>
+            <Border Visibility="{Binding IsCharging, Converter={StaticResource VisibleWhenTrue}}">
+                <views:ChargingView DataContext="{Binding Charging}" />
+            </Border>
+            <Border Visibility="{Binding IsRecordings, Converter={StaticResource VisibleWhenTrue}}">
+                <views:RecordingsView DataContext="{Binding Recordings}" />
+            </Border>
+            <Border Visibility="{Binding IsReports, Converter={StaticResource VisibleWhenTrue}}">
+                <views:ReportsView DataContext="{Binding Reports}" />
+            </Border>
+            <Border Visibility="{Binding IsHistory, Converter={StaticResource VisibleWhenTrue}}">
+                <views:CarHistoryView DataContext="{Binding History}" />
+            </Border>
+            <Border Visibility="{Binding IsSettings, Converter={StaticResource VisibleWhenTrue}}">
+                <views:SettingsView DataContext="{Binding Settings}" />
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

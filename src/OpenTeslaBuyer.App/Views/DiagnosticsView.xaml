@@ -1,0 +1,513 @@
+<UserControl x:Class="OpenTeslaBuyer.App.Views.DiagnosticsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OpenTeslaBuyer.App">
+    <!-- The original main screen, unchanged; the window now adds the left menu around it. -->
+    <UserControl.Resources>
+        <DataTemplate x:Key="CheckTemplate">
+            <Grid Margin="0,0,0,12" Background="Transparent" ToolTip="{Binding Detail}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Margin="0,2,0,0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="&#xE946;" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Status}" Value="Pass">
+                                    <Setter Property="Text" Value="&#xE73E;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Attention">
+                                    <Setter Property="Text" Value="&#xE7BA;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Fail">
+                                    <Setter Property="Text" Value="&#xE711;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Grid.Column="1">
+                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Title}" />
+                    <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Summary}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="InfoRowTemplate">
+            <Grid Margin="0,3" Background="Transparent" ToolTip="{Binding Hint}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Margin="0,0,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Label}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Value}" TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AlertTemplate">
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border CornerRadius="2">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Severity}" Value="Warning">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Severity}" Value="Critical">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+                <Button Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top" Style="{StaticResource IconButton}"
+                        ToolTip="Copy this alert" CommandParameter="{Binding CopyText}"
+                        Command="{Binding DataContext.CopyCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                <StackPanel Grid.Column="1" Margin="10,0,32,0">
+                    <TextBlock Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextWrapping="Wrap">
+                        <Run FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                        <Run Text="  " />
+                        <Run FontFamily="Cascadia Mono, Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Code, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Description}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,2,0,0" Style="{StaticResource Caption}" Text="{Binding Meta}" />
+                    <TextBlock Margin="0,2,0,0" Style="{StaticResource Caption}" FontStyle="Italic" Text="{Binding Detail}"
+                               Visibility="{Binding Detail, Converter={StaticResource CollapsedWhenEmpty}}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Connection -->
+        <Border Grid.Row="0" Style="{StaticResource Card}">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Source" />
+                    <ComboBox Width="200" VerticalAlignment="Center"
+                              ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                              DisplayMemberPath="Title" IsEnabled="{Binding IsIdle}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="16,0,0,0"
+                                Visibility="{Binding IsSerialSource, Converter={StaticResource VisibleWhenTrue}}">
+                        <TextBlock Style="{StaticResource FieldLabel}" Text="Port" />
+                        <ComboBox Width="110" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Ports}" SelectedItem="{Binding SelectedPort}" IsEnabled="{Binding IsIdle}" />
+                        <Button Margin="4,0,0,0" Padding="10,5" VerticalAlignment="Center" ToolTip="Refresh the list of COM ports"
+                                Command="{Binding RefreshPortsCommand}" IsEnabled="{Binding IsIdle}">
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE72C;" />
+                        </Button>
+                        <StackPanel Orientation="Horizontal" Margin="16,0,0,0"
+                                    Visibility="{Binding IsElmSource, Converter={StaticResource VisibleWhenTrue}}">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="Baud" />
+                            <ComboBox Width="100" VerticalAlignment="Center"
+                                      ItemsSource="{Binding BaudRates}" SelectedItem="{Binding SelectedBaud}" IsEnabled="{Binding IsIdle}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="16,0,0,0"
+                                Visibility="{Binding IsReplaySource, Converter={StaticResource VisibleWhenTrue}}">
+                        <TextBox Width="300" VerticalAlignment="Center" IsReadOnly="True" Text="{Binding ReplayFile}" ToolTip="{Binding ReplayFile}" />
+                        <Button Margin="4,0,0,0" VerticalAlignment="Center" Content="Browse…"
+                                Command="{Binding BrowseReplayCommand}" IsEnabled="{Binding IsIdle}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <CheckBox VerticalAlignment="Center" Margin="0,0,16,0" Content="Miles" IsChecked="{Binding UseMiles}" />
+                    <ToggleButton VerticalAlignment="Center" Margin="0,0,8,0" IsChecked="{Binding IsRecording}"
+                                  ToolTip="Save every received frame to a candump log for later replay or analysis">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE7C8;" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Record" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <Button VerticalAlignment="Center" Margin="0,0,8,0" Command="{Binding ExportReportCommand}"
+                            ToolTip="Save an HTML report; print it to PDF from the browser if needed">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE749;" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="Report" />
+                        </StackPanel>
+                    </Button>
+                    <Button MinWidth="110" VerticalAlignment="Center" Content="Connect" Style="{DynamicResource AccentButtonStyle}"
+                            Command="{Binding ConnectCommand}"
+                            Visibility="{Binding IsConnected, Converter={StaticResource VisibleWhenFalse}}" />
+                    <Button MinWidth="110" VerticalAlignment="Center" Content="Disconnect"
+                            Command="{Binding DisconnectCommand}"
+                            Visibility="{Binding IsConnected, Converter={StaticResource VisibleWhenTrue}}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="360" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Health and vehicle -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Margin="0,-4,-6,0" VerticalAlignment="Top" Style="{StaticResource IconButton}"
+                                        ToolTip="Copy a text summary (VIN, health, capacity, range, active alerts) for a message or listing"
+                                        Command="{Binding CopySummaryCommand}" />
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Battery health" />
+                            </DockPanel>
+                            <Grid Width="184" Height="184" HorizontalAlignment="Center">
+                                <local:ArcGauge Value="{Binding SohValue}" Thickness="14"
+                                                TrackBrush="{DynamicResource ControlStrongStrokeColorDisabledBrush}">
+                                    <local:ArcGauge.Style>
+                                        <Style TargetType="local:ArcGauge">
+                                            <Setter Property="FillBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Rating}" Value="Excellent">
+                                                    <Setter Property="FillBrush" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Rating}" Value="Good">
+                                                    <Setter Property="FillBrush" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Rating}" Value="Fair">
+                                                    <Setter Property="FillBrush" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Rating}" Value="Poor">
+                                                    <Setter Property="FillBrush" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </local:ArcGauge.Style>
+                                </local:ArcGauge>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock HorizontalAlignment="Center" FontSize="36" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding SohText}" />
+                                    <TextBlock HorizontalAlignment="Center" Style="{StaticResource Caption}" Text="state of health" />
+                                    <TextBlock HorizontalAlignment="Center" Margin="0,6,0,0" FontWeight="SemiBold" Text="{Binding RatingText}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Rating}" Value="Excellent">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Rating}" Value="Good">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Rating}" Value="Fair">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Rating}" Value="Poor">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+
+                            <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding HealthMetrics}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,5" Background="Transparent" ToolTip="{Binding Hint}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Label}" />
+                                                <TextBlock Style="{StaticResource Caption}" FontSize="11" Text="{Binding Detail}"
+                                                           Visibility="{Binding Detail, Converter={StaticResource CollapsedWhenEmpty}}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource Value}" Text="{Binding Value}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowPackPicker, Converter={StaticResource VisibleWhenTrue}}">
+                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Battery pack" />
+                                <ComboBox Margin="0,6,0,0" HorizontalAlignment="Stretch" ItemsSource="{Binding PackOptions}"
+                                          SelectedItem="{Binding SelectedPack}" DisplayMemberPath="Title" />
+                                <TextBox Margin="0,6,0,0" Text="{Binding OriginalCapacityText, UpdateSourceTrigger=PropertyChanged}"
+                                         Visibility="{Binding IsCustomPack, Converter={StaticResource VisibleWhenTrue}}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource Caption}" Text="{Binding PackExplanation}" />
+                                <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                           Text="{Binding OriginalCapacityError}" TextWrapping="Wrap"
+                                           Visibility="{Binding OriginalCapacityError, Converter={StaticResource CollapsedWhenEmpty}}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,12,0,0" Visibility="{Binding ShowCapacityPrompt, Converter={StaticResource VisibleWhenTrue}}">
+                                <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="Capacity when new (kWh)" />
+                                <TextBox Margin="0,6,0,0" Text="{Binding OriginalCapacityText, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource Caption}" Text="{Binding CapacityPromptText}" />
+                                <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                           Text="{Binding OriginalCapacityError}" TextWrapping="Wrap"
+                                           Visibility="{Binding OriginalCapacityError, Converter={StaticResource CollapsedWhenEmpty}}" />
+                            </StackPanel>
+
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource CardTitle}" Text="Vehicle" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Margin" Value="0,4" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                    </Style>
+                                </Grid.Resources>
+                                <TextBlock Grid.Row="0" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="VIN" />
+                                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
+                                    <TextBlock VerticalAlignment="Center" FontFamily="Cascadia Mono, Consolas" Text="{Binding VinText}" />
+                                    <Button Margin="4,0,0,0" Style="{StaticResource IconButton}" ToolTip="Copy VIN"
+                                            Command="{Binding CopyCommand}" CommandParameter="{Binding VinText}" />
+                                </StackPanel>
+                                <TextBlock Grid.Row="1" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Model" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ModelText}" />
+                                <TextBlock Grid.Row="2" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Model year" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding YearText}" />
+                                <TextBlock Grid.Row="3" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Plant" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PlantText}" />
+                                <TextBlock Grid.Row="4" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Odometer" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding OdometerText}" />
+                                <TextBlock Grid.Row="5" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Platform" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding PlatformText}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="6" Margin="0,4,16,4" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Energy message" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding LayoutText}" />
+                            </Grid>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource SystemFillColorCautionBrush}"
+                                       Text="{Binding VinWarning}" TextWrapping="Wrap"
+                                       Visibility="{Binding VinWarning, Converter={StaticResource CollapsedWhenEmpty}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Margin="0,-4,-6,0" VerticalAlignment="Top" Style="{StaticResource IconButton}"
+                                        ToolTip="Copy configuration and infotainment details" Command="{Binding CopyCarInfoCommand}" />
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Configuration and infotainment" />
+                            </DockPanel>
+                            <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Not received yet."
+                                       Visibility="{Binding HasCarInfo, Converter={StaticResource VisibleWhenFalse}}" />
+                            <ItemsControl ItemsSource="{Binding InfotainmentInfo}" ItemTemplate="{StaticResource InfoRowTemplate}" />
+                            <TextBlock Margin="0,6,0,0" Style="{StaticResource Caption}" Text="{Binding NotBroadcastNote}" />
+                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding ConfigurationInfo}" ItemTemplate="{StaticResource InfoRowTemplate}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource Card}">
+                        <Expander Header="Advanced">
+                            <StackPanel Margin="0,8,0,0">
+                                <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Original capacity override (kWh)" />
+                                <TextBox Margin="0,6,0,0" Text="{Binding OriginalCapacityText, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource Caption}"
+                                           Text="Model 3/Y and 2021+ Model S/X store this in the BMS; leave it empty for them. Pre-2021 Model S/X do not, so enter the pack's capacity when new. Remembered per VIN." />
+                                <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                           Text="{Binding OriginalCapacityError}" TextWrapping="Wrap"
+                                           Visibility="{Binding OriginalCapacityError, Converter={StaticResource CollapsedWhenEmpty}}" />
+
+                                <TextBlock Margin="0,16,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Vehicle platform" />
+                                <ComboBox Margin="0,6,0,0" HorizontalAlignment="Stretch" ItemsSource="{Binding Platforms}"
+                                          SelectedItem="{Binding SelectedPlatform}" DisplayMemberPath="Title" IsEnabled="{Binding IsIdle}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource Caption}"
+                                           Text="Detection listens for both message families and picks the one the car sends." />
+
+                                <TextBlock Margin="0,16,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Energy message layout" />
+                                <ComboBox Margin="0,6,0,0" HorizontalAlignment="Stretch" ItemsSource="{Binding Layouts}"
+                                          SelectedItem="{Binding SelectedLayout}" DisplayMemberPath="Title" IsEnabled="{Binding IsIdle}" />
+                                <TextBlock Margin="0,4,0,0" Style="{StaticResource Caption}"
+                                           Text="Tesla changed this message's format with firmware updates. Force a layout only if detection fails. Applies on the next connect." />
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Live data, cells, notes, log -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="Live battery data" />
+                        <ItemsControl ItemsSource="{Binding LiveMetrics}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="4" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,12,14" Background="Transparent" ToolTip="{Binding Hint}">
+                                        <TextBlock Style="{StaticResource Caption}" Text="{Binding Label}" />
+                                        <TextBlock Margin="0,2,0,0" Style="{StaticResource Value}" Text="{Binding Value}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="1" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="Cell group voltages" />
+                        <TextBlock Style="{StaticResource Caption}" Text="{Binding BrickSummary}" />
+                        <ItemsControl Height="116" Margin="0,10,0,0" ItemsSource="{Binding Bricks}"
+                                      Visibility="{Binding HasBricks, Converter={StaticResource VisibleWhenTrue}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Background="Transparent" ToolTip="{Binding ToolTip}">
+                                        <Border Height="{Binding Height}" Margin="1,0" VerticalAlignment="Bottom" CornerRadius="2,2,0,0">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsHighest}" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsLowest}" Value="True">
+                                                            <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="3*" />
+                        <ColumnDefinition Width="2*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="10,6,10,10">
+                        <TabControl Background="Transparent" BorderThickness="0">
+                            <TabItem Header="Buyer check">
+                                <DockPanel Margin="4,8,0,0">
+                                    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,10" Style="{StaticResource Caption}" Text="{Binding BuyerSummary}" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding BuyerItems}" ItemTemplate="{StaticResource CheckTemplate}" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </TabItem>
+                            <TabItem Header="{Binding AlertsHeader}">
+                                <DockPanel Margin="4,8,0,0">
+                                    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,10" Style="{StaticResource Caption}" Text="{Binding AlertSummary}" />
+                                    <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="No active alerts."
+                                               Visibility="{Binding HasCurrentAlerts, Converter={StaticResource VisibleWhenFalse}}" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding CurrentAlerts}" ItemTemplate="{StaticResource AlertTemplate}" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </TabItem>
+                            <TabItem Header="History">
+                                <DockPanel Margin="4,8,0,0">
+                                    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,10" Style="{StaticResource Caption}"
+                                               Text="Every alert this tool has seen on this car, kept per VIN across sessions. The car's own stored alert log is only reachable with Tesla's service tools." />
+                                    <TextBlock DockPanel.Dock="Top" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="Nothing recorded for this car yet."
+                                               Visibility="{Binding HasAlertHistory, Converter={StaticResource VisibleWhenFalse}}" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding AlertHistory}" ItemTemplate="{StaticResource AlertTemplate}" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </TabItem>
+                            <TabItem Header="Notes">
+                            <ScrollViewer Margin="4,8,0,0" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Notes}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="16" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="•" />
+                                                <TextBlock Grid.Column="1" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            </TabItem>
+                        </TabControl>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}">
+                        <DockPanel>
+                            <DockPanel DockPanel.Dock="Top">
+                                <Button DockPanel.Dock="Right" Padding="8,3" VerticalAlignment="Top" Content="Recordings folder"
+                                        Command="{Binding OpenRecordingsFolderCommand}" />
+                                <TextBlock Style="{StaticResource CardTitle}" Text="Connection log" />
+                            </DockPanel>
+                            <ListBox ItemsSource="{Binding Log}" BorderThickness="0" Background="Transparent"
+                                     FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontWeight="Normal" Text="{Binding}" TextWrapping="Wrap" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- Status -->
+        <DockPanel Grid.Row="2" Margin="12,4,12,0">
+            <TextBlock DockPanel.Dock="Right" Style="{StaticResource Caption}" Text="{Binding FrameText}" />
+            <TextBlock Style="{StaticResource Caption}" Text="{Binding StatusText}" />
+            <TextBlock Margin="24,0,0,0" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                       Text="{Binding CopyFeedback}" />
+        </DockPanel>
+    </Grid>
+</UserControl>
