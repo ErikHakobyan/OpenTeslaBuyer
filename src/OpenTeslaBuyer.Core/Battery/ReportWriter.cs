@@ -19,7 +19,7 @@ public static class ReportWriter
         IReadOnlyList<AlertHistoryEntry>? alertHistory = null,
         AlertCoverage? alertCoverage = null,
         IReadOnlyList<CheckItem>? buyerCheck = null,
-        ChargeTestResult? chargeTest = null)
+        SessionTests? tests = null)
     {
         var vin = data.Vin is { } v ? new VinInfo(v) : null;
         var html = new StringBuilder();
@@ -108,8 +108,14 @@ public static class ReportWriter
             ("Pack temperature min / max", $"{Display.Celsius(data.TempMinC)} / {Display.Celsius(data.TempMaxC)}"),
         ]);
 
-        if (chargeTest is not null)
+        if (tests?.ChargeTest is { } chargeTest)
             ChargeTestSection(html, chargeTest);
+        if (tests?.Overnight is { } overnight)
+            OvernightSection(html, overnight);
+        if (tests?.ChargerIfMeasured is { } charger)
+            ChargerSection(html, charger);
+        if (tests?.TwelveVoltIfMeasured is { } twelveVolt)
+            TwelveVoltSection(html, twelveVolt);
 
         var carInfo = CarInfo.WithEstimates(data);
         var configuration = CarInfo.Fields.Where(f => carInfo.ContainsKey(f.Key)).Select(f => (f.Label, carInfo[f.Key])).ToArray();
@@ -175,7 +181,7 @@ public static class ReportWriter
         bool miles,
         IReadOnlyList<ActiveAlert>? currentAlerts = null,
         IReadOnlyList<CheckItem>? buyerCheck = null,
-        ChargeTestResult? chargeTest = null)
+        SessionTests? tests = null)
     {
         var vin = data.Vin is { } v ? new VinInfo(v) : null;
         var lines = new List<string>
@@ -216,8 +222,14 @@ public static class ReportWriter
                 lines.Add($"  {BuyerCheck.Describe(item.Status)} - {item.Title}: {item.Summary}");
         }
 
-        if (chargeTest is not null)
+        if (tests?.ChargeTest is { } chargeTest)
             lines.Add(chargeTest.ToText());
+        if (tests?.Overnight is { } overnight)
+            lines.Add(overnight.ToText());
+        if (tests?.ChargerIfMeasured is { } charger)
+            lines.Add(charger.ToText());
+        if (tests?.TwelveVoltIfMeasured is { } twelveVolt)
+            lines.Add(twelveVolt.ToText());
 
         lines.Add("Read from the car's battery management system over the diagnostic port; not an official Tesla test.");
         return string.Join(Environment.NewLine, lines);
@@ -259,6 +271,67 @@ public static class ReportWriter
         html.Append("<p class=\"muted\">Each cell group was compared at rest and while charging: a group whose voltage rises more than the others "
                     + "under the same current has higher internal resistance. One weak group can make the car limit power and charging. "
                     + "Cold packs read higher, so compare tests made at similar temperatures.</p>");
+    }
+
+    private static void OvernightSection(StringBuilder html, DriftResult test)
+    {
+        Section(html, "Overnight test",
+        [
+            ("Result", test.Summary),
+            ("Compared", $"{test.Earlier.TakenAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)} → "
+                         + $"{test.Later.TakenAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)} ({DriftResult.Span(test.Elapsed)})"),
+            ("State of charge then / now", $"{Display.Percent(test.Earlier.SocPercent, "0")} / {Display.Percent(test.Later.SocPercent, "0")}"),
+        ]);
+
+        if (test.Flagged.Count > 0)
+        {
+            html.Append("<ul>");
+            foreach (var group in test.Flagged.Take(10))
+                html.Append(CultureInfo.InvariantCulture, $"<li>{Encode(DriftResult.Describe(group))}</li>");
+            html.Append("</ul>");
+        }
+
+        html.Append("<p class=\"muted\">Each cell group was compared with the others in two readings taken hours apart with the car parked. "
+                    + "A group that loses charge faster than the rest has an internal leak (high self-discharge), an early sign of a failing cell."
+                    + (test.FlatVoltagePack ? " This pack's voltage barely changes with charge (likely iron-phosphate), so only large losses show." : "")
+                    + "</p>");
+    }
+
+    private static void ChargerSection(StringBuilder html, ChargerReport charger)
+    {
+        Section(html, "Onboard charger",
+        [
+            ("Charger", charger.Charger ?? Display.Missing),
+            ("Supply", charger.Supply ?? Display.Missing),
+            ("AC current / allowed", $"{Display.Amps(charger.AcAmps)} / {Display.Amps(charger.AcLimitAmps)}"),
+            ("From the supply / to the battery", $"{Display.Kilowatts(charger.AcPowerKw)} / {Display.Kilowatts(charger.BatteryPowerKw)}"),
+            ("Efficiency", Display.Percent(charger.EfficiencyPercent, "0")),
+        ]);
+        Findings(html, charger.Findings);
+    }
+
+    private static void TwelveVoltSection(StringBuilder html, TwelveVoltReport report)
+    {
+        Section(html, "12 V system",
+        [
+            ("12 V now", Display.Volts(report.Volts)),
+            ("DC-DC converter current", Display.Amps(report.DcDcAmps)),
+            ("Lowest before the converter took over", Display.Volts(report.LowestBeforeSupport)),
+            ("Battery", report.Lithium ? "Lithium-ion low-voltage battery" : report.BatteryType ?? Display.Missing),
+        ]);
+        Findings(html, report.Findings);
+    }
+
+    private static void Findings(StringBuilder html, IReadOnlyList<CheckItem> items)
+    {
+        foreach (var item in items.Where(i => i.Status != CheckStatus.NotAvailable))
+        {
+            html.Append(CultureInfo.InvariantCulture, $"<div class=\"check\"><span class=\"badge {item.Status}\">{Encode(BuyerCheck.Describe(item.Status))}</span>");
+            html.Append(CultureInfo.InvariantCulture, $"<div><b>{Encode(item.Title)}</b>: {Encode(item.Summary)}");
+            if (item.Detail is { } detail && item.Status != CheckStatus.Pass)
+                html.Append(CultureInfo.InvariantCulture, $"<div class=\"muted\">{Encode(detail)}</div>");
+            html.Append("</div></div>");
+        }
     }
 
     private static void AlertBlock(StringBuilder html, AlertDefinition alert, string when)

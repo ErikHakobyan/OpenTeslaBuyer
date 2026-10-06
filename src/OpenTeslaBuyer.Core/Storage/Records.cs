@@ -62,6 +62,15 @@ public sealed record CheckRecord
 
     public int ActiveAlerts { get; init; }
 
+    /// <summary>Insulation resistance between the high-voltage system and the car body.</summary>
+    public double? IsolationKOhm { get; init; }
+
+    /// <summary>The pack's resistance from the charging test, when one was measured.</summary>
+    public double? PackResistanceMilliOhm { get; init; }
+
+    /// <summary>What the parked tests found.</summary>
+    public TestSummary? Tests { get; init; }
+
     /// <summary>E.g. "1 attention, 7 pass".</summary>
     public string? BuyerSummary { get; init; }
 
@@ -82,7 +91,7 @@ public sealed record CheckRecord
         DateTimeOffset started,
         DateTimeOffset ended,
         bool miles,
-        ChargeTestResult? chargeTest = null)
+        SessionTests? tests = null)
     {
         var vin = data.Vin is { } v ? new VinInfo(v) : null;
         return new CheckRecord
@@ -103,9 +112,12 @@ public sealed record CheckRecord
             CellSpreadMv = health.CellSpreadMv,
             SocPercent = data.SocUiPercent,
             ActiveAlerts = currentAlerts.Count,
+            IsolationKOhm = data.IsolationResistanceKOhm,
+            PackResistanceMilliOhm = tests?.ChargeTest?.PackResistanceMilliOhm,
+            Tests = TestSummary.From(tests),
             BuyerSummary = buyerCheck.Count == 0 ? null : BuyerCheck.Summarize(buyerCheck),
-            SummaryText = ReportWriter.ToText(data, health, miles, currentAlerts, buyerCheck, chargeTest),
-            ReportHtml = ReportWriter.ToHtml(data, health, miles, ended, currentAlerts, alertHistory, coverage, buyerCheck, chargeTest),
+            SummaryText = ReportWriter.ToText(data, health, miles, currentAlerts, buyerCheck, tests),
+            ReportHtml = ReportWriter.ToHtml(data, health, miles, ended, currentAlerts, alertHistory, coverage, buyerCheck, tests),
         };
     }
 

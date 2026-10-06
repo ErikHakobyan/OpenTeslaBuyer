@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace OpenTeslaBuyer.App;
 
-/// <summary>A small line chart of values in order (oldest first), labelled with the first and last value.</summary>
+/// <summary>A small line chart of values in order (oldest first), labelled with the first and last value in <see cref="Format"/> and <see cref="Unit"/>.</summary>
 public sealed class TrendChart : FrameworkElement
 {
     public static readonly DependencyProperty ValuesProperty = DependencyProperty.Register(
@@ -15,6 +15,24 @@ public sealed class TrendChart : FrameworkElement
 
     public static readonly DependencyProperty TextBrushProperty = DependencyProperty.Register(
         nameof(TextBrush), typeof(Brush), typeof(TrendChart), new FrameworkPropertyMetadata(Brushes.Gray, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty FormatProperty = DependencyProperty.Register(
+        nameof(Format), typeof(string), typeof(TrendChart), new FrameworkPropertyMetadata("0.0", FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public static readonly DependencyProperty UnitProperty = DependencyProperty.Register(
+        nameof(Unit), typeof(string), typeof(TrendChart), new FrameworkPropertyMetadata("%", FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public string Format
+    {
+        get => (string)GetValue(FormatProperty);
+        set => SetValue(FormatProperty, value);
+    }
+
+    public string Unit
+    {
+        get => (string)GetValue(UnitProperty);
+        set => SetValue(UnitProperty, value);
+    }
 
     public IReadOnlyList<double>? Values
     {
@@ -64,7 +82,7 @@ public sealed class TrendChart : FrameworkElement
 
     private void Label(DrawingContext drawingContext, double value, Point point, bool alignRight)
     {
-        var text = new FormattedText(value.ToString("0.0", CultureInfo.CurrentCulture) + "%", CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+        var text = new FormattedText(value.ToString(Format, CultureInfo.CurrentCulture) + Unit, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
             new Typeface("Segoe UI"), 11, TextBrush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
         var x = alignRight ? point.X - text.Width - 6 : point.X + 6;
         var y = point.Y - text.Height - 4 < 0 ? point.Y + 4 : point.Y - text.Height - 4;

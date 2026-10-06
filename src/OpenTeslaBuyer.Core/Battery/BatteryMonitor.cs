@@ -9,6 +9,8 @@ public sealed class BatteryMonitor(IVehicleProfile profile)
     private readonly object _gate = new();
     private readonly BatteryData _data = new();
     private readonly ChargeTest _chargeTest = new();
+    private readonly ChargerCheck _charger = new();
+    private readonly TwelveVoltCheck _twelveVolt = new();
 
     public IVehicleProfile Profile => profile;
 
@@ -21,6 +23,8 @@ public sealed class BatteryMonitor(IVehicleProfile profile)
             _data.SeenIds.Add(frame.Id);
             profile.Process(frame, _data);
             _chargeTest.Observe(_data, frame.Timestamp);
+            _charger.Observe(_data, frame.Timestamp, _chargeTest.Amps);
+            _twelveVolt.Observe(_data, frame.Timestamp);
         }
     }
 
@@ -34,6 +38,18 @@ public sealed class BatteryMonitor(IVehicleProfile profile)
     {
         lock (_gate)
             return _chargeTest.Status();
+    }
+
+    public ChargerReport ChargerReport()
+    {
+        lock (_gate)
+            return _charger.Report(_data);
+    }
+
+    public TwelveVoltReport TwelveVoltReport()
+    {
+        lock (_gate)
+            return _twelveVolt.Report(_data);
     }
 
     /// <summary>Discards the charging test's measurements, e.g. to repeat it without reconnecting.</summary>

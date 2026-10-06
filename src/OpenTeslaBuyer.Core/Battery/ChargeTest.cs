@@ -103,6 +103,7 @@ public sealed record ChargeTestResult(
 /// <param name="Amps">Positive into the pack.</param>
 /// <param name="PowerKw">Positive into the pack.</param>
 /// <param name="Progress">What the test is doing or waiting for, as a sentence.</param>
+/// <param name="ParkedSnapshot">The cell groups at rest before any charging this connection, for the overnight test.</param>
 public sealed record ChargeTestStatus(
     PackActivity Activity,
     double? Amps,
@@ -111,7 +112,8 @@ public sealed record ChargeTestStatus(
     TimeSpan ActivityDuration,
     double? EnergyAddedKWh,
     string Progress,
-    ChargeTestResult? Result);
+    ChargeTestResult? Result,
+    CellSnapshot? ParkedSnapshot = null);
 
 /// <summary>
 /// Finds cell groups with higher internal resistance by comparing every group at rest with the same group while charging.
@@ -155,6 +157,12 @@ public sealed class ChargeTest
     internal const double MinimumStepAmps = 8;
     internal const int MinimumGroups = 8;
 
+    /// <summary>The parked snapshot averages this much rest, drawing no more than <see cref="ParkedAmps"/>.</summary>
+    internal static readonly TimeSpan ParkedWindow = TimeSpan.FromSeconds(30);
+
+    /// <summary>A few amps at most, so the current itself moves no group by more than a fraction of a millivolt.</summary>
+    internal const double ParkedAmps = 5;
+
     /// <summary>A group is flagged when it is this share of the average group's resistance above the typical group...</summary>
     internal const double HigherShare = 0.15;
     internal const double MuchHigherShare = 0.35;
@@ -180,6 +188,11 @@ public sealed class ChargeTest
     private double? _soc;
     private double? _tempMin;
     private double? _tempMax;
+    private bool _charged;
+    private CellSnapshot? _parked;
+
+    /// <summary>The pack current as the test sees it (positive into the pack), for other checks that need it.</summary>
+    internal double? Amps => _amps;
 
     public void Reset()
     {
@@ -197,6 +210,8 @@ public sealed class ChargeTest
         _hasGroups = false;
         _amps = null;
         _powerKw = null;
+        _charged = false;
+        _parked = null;
     }
 
     /// <param name="time">The frame's own timestamp.</param>
@@ -251,17 +266,20 @@ public sealed class ChargeTest
         if (!segment.Measured && time - segment.SettledFrom > WindowLength && Length(segment.Head) >= MinimumWindow)
             Measure(segment);
 
-        var deviations = Deviations(data.BrickVoltages);
+        var deviations = Deviations(data.BrickVoltages, out var median);
         _hasGroups = deviations is not null;
         if (deviations is null || _amps is not { } amps || time < segment.SettledFrom)
             return;
 
-        var sample = new Sample(time, amps, data.PackVoltage, deviations);
+        var sample = new Sample(time, amps, data.PackVoltage, deviations, median);
         if (time - segment.SettledFrom <= WindowLength)
             segment.Head.Add(sample);
         segment.Tail.Enqueue(sample);
         while (time - segment.Tail.Peek().Time > WindowLength + EstimateLag)
             segment.Tail.Dequeue();
+
+        if (_parked is null && !_charged && segment.Activity == PackActivity.Resting)
+            _parked = ParkedSnapshot(segment);
     }
 
     public ChargeTestStatus Status()
@@ -275,7 +293,8 @@ public sealed class ChargeTest
             _segment is null ? TimeSpan.Zero : _segment.End - _segment.Start,
             _firstChargeKWh is { } first && _lastChargeKWh is { } latest ? latest - first : null,
             Progress(result),
-            result);
+            result,
+            _parked);
     }
 
     private static PackActivity Classify(double? amps, PackActivity current) => amps switch
@@ -302,6 +321,26 @@ public sealed class ChargeTest
         }
 
         _segment = new Segment(activity, time, SettleTime + (_estimated ? EstimateLag : TimeSpan.Zero));
+        if (activity == PackActivity.Charging)
+            _charged = true; // after charging the cells take hours to settle, so the parked snapshot only comes before it
+    }
+
+    /// <summary>Every group's average voltage over the latest rest, if it was long and quiet enough.</summary>
+    private CellSnapshot? ParkedSnapshot(Segment segment)
+    {
+        var rest = UsableTail(segment);
+        if (Length(rest) < ParkedWindow || rest.Average(s => Math.Abs(s.Amps)) > ParkedAmps)
+            return null;
+
+        var median = rest.Average(s => s.MedianVolts);
+        var volts = new Dictionary<int, double>();
+        for (var group = 0; group < rest.Max(s => s.Deviations.Length); group++)
+        {
+            if (Mean(rest, s => At(s.Deviations, group)) is { } deviation)
+                volts[group] = median + deviation;
+        }
+
+        return volts.Count >= MinimumGroups ? new CellSnapshot(rest[^1].Time, volts, _soc, _tempMin, _tempMax) : null;
     }
 
     private void Measure(Segment segment)
@@ -428,12 +467,13 @@ public sealed class ChargeTest
     }
 
     /// <summary>Each group's voltage minus the median group's, indexed by group; NaN where a group has no reading.</summary>
-    private static double[]? Deviations(SortedDictionary<int, double> voltages)
+    private static double[]? Deviations(SortedDictionary<int, double> voltages, out double median)
     {
+        median = double.NaN;
         if (voltages.Count < MinimumGroups)
             return null;
 
-        var median = Median(voltages.Values);
+        median = Median(voltages.Values);
         var deviations = new double[voltages.Keys.Last() + 1];
         Array.Fill(deviations, double.NaN);
         foreach (var (group, volts) in voltages)
@@ -473,7 +513,7 @@ public sealed class ChargeTest
 
     private readonly record struct CounterReading(DateTimeOffset Time, double? ChargeKWh, double? DischargeKWh, double? RawAmps);
 
-    private sealed record Sample(DateTimeOffset Time, double Amps, double? PackVolts, double[] Deviations);
+    private sealed record Sample(DateTimeOffset Time, double Amps, double? PackVolts, double[] Deviations, double MedianVolts);
 
     /// <summary>A stretch of time in one <see cref="PackActivity"/>.</summary>
     private sealed class Segment(PackActivity activity, DateTimeOffset start, TimeSpan settle)

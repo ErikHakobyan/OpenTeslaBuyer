@@ -20,6 +20,12 @@ public static class ModelSXSignals
     public static readonly Signal SocMin = new(0, 10, 0.1);
     public static readonly Signal SocUi = new(10, 10, 0.1);
 
+    /// <summary>0x210 DC-DC converter status (wk057's notes): the 12 V output.</summary>
+    public const uint DcDc = 0x210;
+
+    public static readonly Signal DcDcOutputCurrent = new(32, 8);
+    public static readonly Signal DcDcOutputVoltage = new(40, 8, 0.1);
+
     /// <summary>0x382 BMS energy status; see <see cref="EnergyStatus"/> for its layouts.</summary>
     public const uint Energy = 0x382;
 

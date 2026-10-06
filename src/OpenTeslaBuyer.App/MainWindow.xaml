@@ -39,8 +39,8 @@
             <Border Visibility="{Binding IsDiagnostics, Converter={StaticResource VisibleWhenTrue}}">
                 <views:DiagnosticsView DataContext="{Binding Diagnostics}" />
             </Border>
-            <Border Visibility="{Binding IsCharging, Converter={StaticResource VisibleWhenTrue}}">
-                <views:ChargingView DataContext="{Binding Charging}" />
+            <Border Visibility="{Binding IsTests, Converter={StaticResource VisibleWhenTrue}}">
+                <views:TestsView DataContext="{Binding TestsPage}" />
             </Border>
             <Border Visibility="{Binding IsRecordings, Converter={StaticResource VisibleWhenTrue}}">
                 <views:RecordingsView DataContext="{Binding Recordings}" />

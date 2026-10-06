@@ -1,11 +1,13 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using OpenTeslaBuyer.Core.Alerts;
+using OpenTeslaBuyer.Core.Battery;
 
 namespace OpenTeslaBuyer.Core.Storage;
 
 /// <summary>
-/// The tool's local SQLite database: cars, saved checks, alert episodes and the recordings library.
+/// The tool's local SQLite database: cars, saved checks, alert episodes, parked cell snapshots and the recordings library.
 /// One file, no server, works on every platform .NET runs on. Large files (recordings, exported reports)
 /// stay on disk; the database keeps their paths.
 /// </summary>
@@ -13,7 +15,10 @@ public sealed class AppDatabase : IDisposable
 {
     public const string FileName = "data.db";
 
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
+
+    /// <summary>Parked snapshots kept per car; older ones are dropped.</summary>
+    internal const int SnapshotsPerCar = 30;
 
     private readonly SqliteConnection _connection;
 
@@ -72,7 +77,7 @@ public sealed class AppDatabase : IDisposable
     public void DeleteCar(string vin)
     {
         using var transaction = _connection.BeginTransaction();
-        foreach (var table in new[] { "checks", "alert_episodes", "cars" })
+        foreach (var table in new[] { "checks", "alert_episodes", "cell_snapshots", "cars" })
             Execute($"DELETE FROM {table} WHERE vin = $vin", transaction, ("$vin", vin));
         transaction.Commit();
     }
@@ -81,7 +86,7 @@ public sealed class AppDatabase : IDisposable
 
     private const string CheckColumns =
         "id, vin, model, model_year, started, ended, source, platform, odometer_km, soh, original_kwh, original_source, " +
-        "current_kwh, usable_kwh, cell_spread_mv, soc, active_alerts, buyer_summary, summary_text";
+        "current_kwh, usable_kwh, cell_spread_mv, soc, active_alerts, buyer_summary, summary_text, isolation_kohm, pack_resistance_mohm, tests_json";
 
     public long AddCheck(CheckRecord check)
     {
@@ -90,15 +95,18 @@ public sealed class AppDatabase : IDisposable
 
         Execute("""
             INSERT INTO checks (vin, model, model_year, started, ended, source, platform, odometer_km, soh, original_kwh, original_source,
-                                current_kwh, usable_kwh, cell_spread_mv, soc, active_alerts, buyer_summary, summary_text, report_html)
+                                current_kwh, usable_kwh, cell_spread_mv, soc, active_alerts, buyer_summary, summary_text, report_html,
+                                isolation_kohm, pack_resistance_mohm, tests_json)
             VALUES ($vin, $model, $year, $started, $ended, $source, $platform, $odometer, $soh, $original, $originalSource,
-                    $current, $usable, $spread, $soc, $alerts, $buyer, $summary, $html)
+                    $current, $usable, $spread, $soc, $alerts, $buyer, $summary, $html, $isolation, $resistance, $tests)
             """,
             ("$vin", check.Vin), ("$model", check.Model), ("$year", check.ModelYear), ("$started", Text(check.Started)),
             ("$ended", Text(check.Ended)), ("$source", check.Source), ("$platform", check.Platform), ("$odometer", check.OdometerKm),
             ("$soh", check.StateOfHealthPercent), ("$original", check.OriginalKWh), ("$originalSource", check.OriginalSource),
             ("$current", check.CurrentKWh), ("$usable", check.UsableKWh), ("$spread", check.CellSpreadMv), ("$soc", check.SocPercent),
-            ("$alerts", check.ActiveAlerts), ("$buyer", check.BuyerSummary), ("$summary", check.SummaryText), ("$html", check.ReportHtml));
+            ("$alerts", check.ActiveAlerts), ("$buyer", check.BuyerSummary), ("$summary", check.SummaryText), ("$html", check.ReportHtml),
+            ("$isolation", check.IsolationKOhm), ("$resistance", check.PackResistanceMilliOhm),
+            ("$tests", check.Tests is { } tests ? JsonSerializer.Serialize(tests, StorageJsonContext.Default.TestSummary) : null));
         return Scalar<long>("SELECT last_insert_rowid()");
     }
 
@@ -138,6 +146,38 @@ public sealed class AppDatabase : IDisposable
         transaction.Commit();
     }
 
+    // ---------------------------------------------------------------- parked cell snapshots
+
+    /// <summary>Keeps a parked snapshot for the overnight test (once per time stamp); older ones beyond the limit are dropped.</summary>
+    public void SaveSnapshot(string vin, CellSnapshot snapshot)
+    {
+        var takenAt = Text(snapshot.TakenAt.ToUniversalTime());
+        if (Query("SELECT 1 FROM cell_snapshots WHERE vin = $vin AND taken_at = $at", _ => 1, ("$vin", vin), ("$at", takenAt)).Count > 0)
+            return;
+
+        TouchCarIfMissing(vin);
+        using var transaction = _connection.BeginTransaction();
+        Execute("INSERT INTO cell_snapshots (vin, taken_at, soc, temp_min, temp_max, volts_json) VALUES ($vin, $at, $soc, $min, $max, $volts)",
+            transaction, ("$vin", vin), ("$at", takenAt), ("$soc", snapshot.SocPercent), ("$min", snapshot.TempMinC), ("$max", snapshot.TempMaxC),
+            ("$volts", JsonSerializer.Serialize(snapshot.Volts.ToDictionary(), StorageJsonContext.Default.DictionaryInt32Double)));
+        Execute("DELETE FROM cell_snapshots WHERE vin = $vin AND id NOT IN "
+                + $"(SELECT id FROM cell_snapshots WHERE vin = $vin ORDER BY taken_at DESC LIMIT {SnapshotsPerCar})", transaction, ("$vin", vin));
+        transaction.Commit();
+    }
+
+    /// <summary>A car's parked snapshots, newest first.</summary>
+    public IReadOnlyList<CellSnapshot> ListSnapshots(string vin) =>
+        Query("SELECT taken_at, soc, temp_min, temp_max, volts_json FROM cell_snapshots WHERE vin = $vin ORDER BY taken_at DESC", r => new CellSnapshot(
+            Date(r.GetString(0)),
+            JsonSerializer.Deserialize(r.GetString(4), StorageJsonContext.Default.DictionaryInt32Double) ?? [],
+            r.IsDBNull(1) ? null : r.GetDouble(1),
+            r.IsDBNull(2) ? null : r.GetDouble(2),
+            r.IsDBNull(3) ? null : r.GetDouble(3)), ("$vin", vin));
+
+    /// <summary>The newest snapshot of the car that is far enough before <paramref name="later"/> to compare with it.</summary>
+    public CellSnapshot? SnapshotBefore(string vin, DateTimeOffset later) =>
+        ListSnapshots(vin).FirstOrDefault(s => later - s.TakenAt >= CellDrift.MinimumGap && later - s.TakenAt <= CellDrift.MaximumGap);
+
     // ---------------------------------------------------------------- recordings
 
     /// <summary>Adds or updates a recording; null fields keep their stored value (except notes, which are replaced).</summary>
@@ -176,6 +216,28 @@ public sealed class AppDatabase : IDisposable
             return;
 
         using var transaction = _connection.BeginTransaction();
+        if (version < 1)
+            CreateVersion1(transaction);
+
+        if (version < 2)
+        {
+            Execute("""
+                ALTER TABLE checks ADD COLUMN isolation_kohm REAL;
+                ALTER TABLE checks ADD COLUMN pack_resistance_mohm REAL;
+                ALTER TABLE checks ADD COLUMN tests_json TEXT;
+                CREATE TABLE IF NOT EXISTS cell_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, vin TEXT NOT NULL, taken_at TEXT NOT NULL, soc REAL, temp_min REAL, temp_max REAL,
+                    volts_json TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS ix_cell_snapshots_vin ON cell_snapshots (vin, taken_at);
+                """, transaction);
+        }
+
+        Execute($"PRAGMA user_version = {SchemaVersion}", transaction);
+        transaction.Commit();
+    }
+
+    private void CreateVersion1(SqliteTransaction transaction)
+    {
         Execute("""
             CREATE TABLE IF NOT EXISTS cars (
                 vin TEXT PRIMARY KEY, model TEXT, model_year INTEGER, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
@@ -193,8 +255,6 @@ public sealed class AppDatabase : IDisposable
             CREATE TABLE IF NOT EXISTS recordings (
                 path TEXT PRIMARY KEY, vin TEXT, started TEXT NOT NULL, ended TEXT, frames INTEGER, size_bytes INTEGER, source TEXT, notes TEXT);
             """, transaction);
-        Execute($"PRAGMA user_version = {SchemaVersion}", transaction);
-        transaction.Commit();
     }
 
     private void TouchCarIfMissing(string vin)
@@ -268,6 +328,9 @@ public sealed class AppDatabase : IDisposable
         ActiveAlerts = r.GetInt32(r.GetOrdinal("active_alerts")),
         BuyerSummary = NullableString(r, "buyer_summary"),
         SummaryText = NullableString(r, "summary_text"),
+        IsolationKOhm = NullableDouble(r, "isolation_kohm"),
+        PackResistanceMilliOhm = NullableDouble(r, "pack_resistance_mohm"),
+        Tests = NullableString(r, "tests_json") is { } json ? JsonSerializer.Deserialize(json, StorageJsonContext.Default.TestSummary) : null,
         ReportHtml = withReport ? NullableString(r, "report_html") : null,
     };
 

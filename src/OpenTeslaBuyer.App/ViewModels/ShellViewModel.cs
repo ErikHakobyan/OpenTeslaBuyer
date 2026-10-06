@@ -16,14 +16,14 @@ public sealed record NavItem(string Key, string Title, string Glyph);
 public sealed partial class ShellViewModel : ObservableObject
 {
     public const string DiagnosticsKey = "diagnostics";
-    public const string ChargingKey = "charging";
+    public const string TestsKey = "tests";
     public const string RecordingsKey = "recordings";
     public const string ReportsKey = "reports";
     public const string HistoryKey = "history";
     public const string SettingsKey = "settings";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDiagnostics), nameof(IsCharging), nameof(IsRecordings), nameof(IsReports), nameof(IsHistory), nameof(IsSettings))]
+    [NotifyPropertyChangedFor(nameof(IsDiagnostics), nameof(IsTests), nameof(IsRecordings), nameof(IsReports), nameof(IsHistory), nameof(IsSettings))]
     private NavItem _selectedPage;
 
     public ShellViewModel()
@@ -34,7 +34,7 @@ public sealed partial class ShellViewModel : ObservableObject
         if (Services.Settings.Theme != AppTheme.System)
             Ui.ApplyTheme(Services.Settings.Theme);
         Diagnostics = new MainViewModel(Services);
-        Charging = new ChargingViewModel(this);
+        TestsPage = new TestsViewModel(this);
         Recordings = new RecordingsViewModel(Services, this);
         Reports = new ReportsViewModel(Services);
         History = new CarHistoryViewModel(Services, this);
@@ -42,7 +42,7 @@ public sealed partial class ShellViewModel : ObservableObject
         Pages =
         [
             new(DiagnosticsKey, "Diagnostics", ""),
-            new(ChargingKey, "Charging test", ""),
+            new(TestsKey, "Tests", ""),
             new(RecordingsKey, "Recordings", ""),
             new(ReportsKey, "Reports", ""),
             new(HistoryKey, "Car history", ""),
@@ -58,7 +58,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public MainViewModel Diagnostics { get; }
 
-    public ChargingViewModel Charging { get; }
+    public TestsViewModel TestsPage { get; }
 
     public RecordingsViewModel Recordings { get; }
 
@@ -70,7 +70,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     public bool IsDiagnostics => SelectedPage.Key == DiagnosticsKey;
 
-    public bool IsCharging => SelectedPage.Key == ChargingKey;
+    public bool IsTests => SelectedPage.Key == TestsKey;
 
     public bool IsRecordings => SelectedPage.Key == RecordingsKey;
 
@@ -97,7 +97,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
     private IPage? ActivePage() => SelectedPage.Key switch
     {
-        ChargingKey => Charging,
+        TestsKey => TestsPage,
         RecordingsKey => Recordings,
         ReportsKey => Reports,
         HistoryKey => History,

@@ -29,6 +29,8 @@ public enum SourceKind
     SimulatorModelS,
     SimulatorModel3Charging,
     SimulatorModelSCharging,
+    SimulatorModel3HomeCharging,
+    SimulatorModel3NextMorning,
 }
 
 public sealed record SourceOption(SourceKind Kind, string Title);
@@ -93,6 +95,10 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _autoRecording;
     private string _carInfoShown = "";
     private ChargeTestStatus? _chargeTest;
+    private SessionTests _tests = SessionTests.None;
+    private bool _snapshotHandled;
+    private DriftResult? _overnight;
+    private CellSnapshot? _earlierSnapshot;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSerialSource), nameof(IsElmSource), nameof(IsReplaySource))]
@@ -230,6 +236,8 @@ public sealed partial class MainViewModel : ObservableObject
             new(SourceKind.SimulatorModelS, "Simulator: Model S"),
             new(SourceKind.SimulatorModel3Charging, "Simulator: Model 3 charging"),
             new(SourceKind.SimulatorModelSCharging, "Simulator: Model S charging"),
+            new(SourceKind.SimulatorModel3HomeCharging, "Simulator: Model 3 home charging"),
+            new(SourceKind.SimulatorModel3NextMorning, "Simulator: Model 3 next morning"),
         ];
         Platforms =
         [
@@ -326,6 +334,15 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The charging test of the current (or last) connection.</summary>
     public ChargeTestStatus? ChargeTest => _chargeTest;
 
+    /// <summary>All the parked tests of the current (or last) connection.</summary>
+    public SessionTests Tests => _tests;
+
+    /// <summary>The earlier parked reading this connection's was compared with (or would be), if there is one.</summary>
+    public CellSnapshot? EarlierSnapshot => _earlierSnapshot;
+
+    /// <summary>The database, for pages that show a car's saved readings.</summary>
+    public AppDatabase Database => _services.Database;
+
     /// <summary>Raised after every refresh, so other pages can follow the connection.</summary>
     public event EventHandler? Refreshed;
 
@@ -368,6 +385,9 @@ public sealed partial class MainViewModel : ObservableObject
         _alerts = new AlertTracker(new DatabaseAlertHistoryStore(_services.Database));
         _connectedAt = DateTimeOffset.Now;
         _alertsVersion = -1;
+        _snapshotHandled = false;
+        _overnight = null;
+        _earlierSnapshot = null;
         using var cts = new CancellationTokenSource();
         _cts = cts;
         _monitor = monitor;
@@ -462,7 +482,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var check = CheckRecord.Create(_data, _health, BuyerItems.ToList(), _alerts.Current, _alerts.History(), _alerts.Coverage,
-                SelectedSource.Title, _connectedAt, DateTimeOffset.Now, UseMiles, _chargeTest?.Result);
+                SelectedSource.Title, _connectedAt, DateTimeOffset.Now, UseMiles, _tests);
             _services.Database.AddCheck(check);
             EnqueueLog("Check saved; see Reports and Car history.");
             _services.NotifyDataChanged();
@@ -530,7 +550,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void CopySummary() => Copy(ReportWriter.ToText(_data, _health, UseMiles, _alerts?.Current, BuyerItems.ToList(), _chargeTest?.Result));
+    private void CopySummary() => Copy(ReportWriter.ToText(_data, _health, UseMiles, _alerts?.Current, BuyerItems.ToList(), _tests));
 
     [RelayCommand]
     private void CopyCarInfo() => Copy(CarInfo.ToText(CarInfo.WithEstimates(_data)));
@@ -558,7 +578,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
 
         File.WriteAllText(dialog.FileName, ReportWriter.ToHtml(_data, _health, UseMiles, DateTimeOffset.Now, _alerts?.Current, _alerts?.History(), _alerts?.Coverage,
-            BuyerItems.ToList(), _chargeTest?.Result));
+            BuyerItems.ToList(), _tests));
         EnqueueLog($"Report saved: {dialog.FileName}");
         Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
         Refresh();
@@ -629,6 +649,8 @@ public sealed partial class MainViewModel : ObservableObject
         SourceKind.SimulatorModelS => new SimulatorAdapter(SimulatedCar.ModelS),
         SourceKind.SimulatorModel3Charging => new SimulatorAdapter(SimulatedCar.Model3Charging),
         SourceKind.SimulatorModelSCharging => new SimulatorAdapter(SimulatedCar.ModelSCharging),
+        SourceKind.SimulatorModel3HomeCharging => new SimulatorAdapter(SimulatedCar.Model3HomeCharging),
+        SourceKind.SimulatorModel3NextMorning => new SimulatorAdapter(SimulatedCar.Model3NextMorning),
         _ => new SimulatorAdapter(SimulatedCar.Model3),
     };
 
@@ -682,6 +704,8 @@ public sealed partial class MainViewModel : ObservableObject
 
         var data = _monitor?.Snapshot() ?? new BatteryData();
         _chargeTest = _monitor?.ChargeTestStatus();
+        HandleParkedSnapshot(data);
+        _tests = new SessionTests(_chargeTest?.Result, _overnight, _monitor?.ChargerReport(), _monitor?.TwelveVoltReport());
         LoadRememberedCapacity(data);
         var health = HealthCalculator.Evaluate(data, ParseOriginalCapacity(), SelectedPack.IsPack ? SelectedPack.Key : null);
         var exportChanged = CanExportReport() != data.FrameCount > 0;
@@ -700,6 +724,28 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCarInfo(data);
         RefreshStatus(data);
         Refreshed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Once per connection, when the car has rested long enough: compares this parked reading with the car's earlier one
+    /// (the overnight test) and saves it for the next connection.
+    /// </summary>
+    private void HandleParkedSnapshot(BatteryData data)
+    {
+        if (_snapshotHandled || _chargeTest?.ParkedSnapshot is not { } snapshot || data.Vin is not { } vin)
+            return;
+
+        _snapshotHandled = true;
+        try
+        {
+            _earlierSnapshot = _services.Database.SnapshotBefore(vin, snapshot.TakenAt);
+            _overnight = _earlierSnapshot is { } earlier ? CellDrift.Compare(earlier, snapshot) : null;
+            _services.Database.SaveSnapshot(vin, snapshot);
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException ex)
+        {
+            EnqueueLog($"Could not keep the parked reading: {ex.Message}");
+        }
     }
 
     private void RefreshBuyerCheck(BatteryData data, HealthReport health)

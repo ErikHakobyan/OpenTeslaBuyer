@@ -8,7 +8,7 @@ using OpenTeslaBuyer.Core.Storage;
 
 namespace OpenTeslaBuyer.App.ViewModels;
 
-/// <summary>Every car checked so far; for the selected one, its health over time, checks, alert history and recordings.</summary>
+/// <summary>Every car checked so far; for the selected one, its trends, tests, checks, alert history and recordings.</summary>
 public sealed partial class CarHistoryViewModel(AppServices services, ShellViewModel shell) : ObservableObject, IPage
 {
     [ObservableProperty]
@@ -22,10 +22,7 @@ public sealed partial class CarHistoryViewModel(AppServices services, ShellViewM
     private string _notes = "";
 
     [ObservableProperty]
-    private string _healthTrend = "";
-
-    [ObservableProperty]
-    private IReadOnlyList<double> _healthPoints = [];
+    private string _standingOutNote = "";
 
     [ObservableProperty]
     private string _choiceText = "";
@@ -49,6 +46,15 @@ public sealed partial class CarHistoryViewModel(AppServices services, ShellViewM
 
     public ObservableCollection<RecordingItem> Recordings { get; } = [];
 
+    /// <summary>One small chart per measurement followed across the car's checks.</summary>
+    public ObservableCollection<TrendTile> Trends { get; } = [];
+
+    /// <summary>Cell groups the charging or overnight tests flagged, the most often first.</summary>
+    public ObservableCollection<string> StandingOut { get; } = [];
+
+    /// <summary>The latest charger and 12 V results.</summary>
+    public ObservableCollection<string> LatestTests { get; } = [];
+
     public bool HasSelection => SelectedCar is not null;
 
     public void Activate()
@@ -69,6 +75,9 @@ public sealed partial class CarHistoryViewModel(AppServices services, ShellViewM
         Checks.Clear();
         Alerts.Clear();
         Recordings.Clear();
+        Trends.Clear();
+        StandingOut.Clear();
+        LatestTests.Clear();
         Feedback = null;
         if (value is null)
             return;
@@ -78,15 +87,20 @@ public sealed partial class CarHistoryViewModel(AppServices services, ShellViewM
         foreach (var check in checks)
             Checks.Add(new CheckRow(check));
 
-        var points = checks.Where(c => c.StateOfHealthPercent is not null).OrderBy(c => c.Ended).ToList();
-        HealthPoints = points.Select(c => c.StateOfHealthPercent!.Value).ToList();
-        HealthTrend = points.Count switch
-        {
-            0 => "No health readings saved yet.",
-            1 => $"{Pct(points[0].StateOfHealthPercent)} on {Ui.When(points[0].Ended)}.",
-            _ => $"{Pct(points[0].StateOfHealthPercent)} → {Pct(points[^1].StateOfHealthPercent)} over {(points[^1].Ended - points[0].Ended).TotalDays:0} days"
-                 + (points[0].OdometerKm is { } first && points[^1].OdometerKm is { } last ? $" and {(last - first).ToString("N0", CultureInfo.CurrentCulture)} km." : "."),
-        };
+        foreach (var trend in CarTrends.Build(checks))
+            Trends.Add(new TrendTile(trend.Title, trend.Latest, trend.Change, trend.Points.Select(p => p.Value).ToList(), trend.Unit, trend.Format));
+
+        foreach (var group in CarTrends.Groups(checks).Take(10))
+            StandingOut.Add(group.Describe());
+        var tested = checks.Any(c => c.Tests is { Resistance: not null } or { Overnight: not null });
+        StandingOutNote = StandingOut.Count > 0
+            ? "A group flagged in more than one test is worth showing to a service centre."
+            : tested ? "No cell group has stood out in this car's charging or overnight tests." : "No charging or overnight tests saved for this car yet.";
+
+        if (checks.FirstOrDefault(c => c.Tests?.Charger is not null) is { Tests: { } charger } chargerCheck)
+            LatestTests.Add($"Onboard charger, {Ui.When(chargerCheck.Ended)}: {charger.ChargerSummary}");
+        if (checks.FirstOrDefault(c => c.Tests?.TwelveVolt is not null) is { Tests: { } twelveVolt } twelveVoltCheck)
+            LatestTests.Add($"12 V system, {Ui.When(twelveVoltCheck.Ended)}: {twelveVolt.TwelveVoltSummary}");
 
         foreach (var entry in AlertTracker.Summarize(services.Database.LoadEpisodes(car.Vin)))
             Alerts.Add(AlertItem.From(entry));
@@ -155,8 +169,10 @@ public sealed partial class CarHistoryViewModel(AppServices services, ShellViewM
         Activate();
     }
 
-    private static string Pct(double? value) => value is { } v ? v.ToString("0.0", CultureInfo.CurrentCulture) + "%" : Display.Missing;
 }
+
+/// <summary>One measurement's chart on the car's page.</summary>
+public sealed record TrendTile(string Title, string Latest, string Change, IReadOnlyList<double> Values, string Unit, string Format);
 
 /// <summary>A car in the list.</summary>
 public sealed class CarRow(CarSummary summary)

@@ -56,5 +56,154 @@
             <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
+
+        <!-- Shared by the Tests page's tabs. -->
+        <!-- Status dot: resting = accent, charging = green, discharging = amber. -->
+        <Style x:Key="ActivityDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="Fill" Value="{DynamicResource ControlStrongFillColorDisabledBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ActivityKind}" Value="resting">
+                    <Setter Property="Fill" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActivityKind}" Value="charging">
+                    <Setter Property="Fill" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActivityKind}" Value="discharging">
+                    <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ResultAccent" TargetType="Border">
+            <Setter Property="BorderThickness" Value="4,0,0,0" />
+            <Setter Property="Padding" Value="12,2,0,2" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrongFillColorDisabledBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ResultKind}" Value="ok">
+                    <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ResultKind}" Value="attention">
+                    <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ResultKind}" Value="critical">
+                    <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <ItemsPanelTemplate x:Key="BarPanel">
+            <UniformGrid Rows="1" />
+        </ItemsPanelTemplate>
+
+        <!-- Voltages now, one colour; groups the result flagged keep their colour here too. -->
+        <DataTemplate x:Key="VoltageBar">
+            <Grid Background="Transparent" ToolTip="{Binding ToolTip}">
+                <Border Height="{Binding Height}" Margin="1,0" VerticalAlignment="Bottom" CornerRadius="2,2,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Level}" Value="higher">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Level}" Value="much-higher">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ResistanceBar">
+            <Grid Background="Transparent" ToolTip="{Binding ToolTip}">
+                <Border Height="{Binding Height}" Margin="1,0" VerticalAlignment="Bottom" CornerRadius="2,2,0,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource ControlStrongFillColorDisabledBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Level}" Value="higher">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Level}" Value="much-higher">
+                                    <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="MetricTemplate">
+            <StackPanel Margin="0,0,16,12">
+                <TextBlock Style="{StaticResource Caption}" Text="{Binding Label}" ToolTip="{Binding Hint}" />
+                <TextBlock Margin="0,2,0,0" Style="{StaticResource Value}" Text="{Binding Value}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- A finding with its status icon and, below, how it was judged. -->
+        <DataTemplate x:Key="CheckItemTemplate">
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="26" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Margin="0,2,0,0" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="15">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="&#xE946;" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Status}" Value="Pass">
+                                    <Setter Property="Text" Value="&#xE73E;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Attention">
+                                    <Setter Property="Text" Value="&#xE7BA;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Fail">
+                                    <Setter Property="Text" Value="&#xE711;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <StackPanel Grid.Column="1">
+                    <TextBlock FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Title}" />
+                    <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Text="{Binding Summary}" TextWrapping="Wrap" />
+                    <TextBlock Margin="0,3,0,0" Style="{StaticResource Caption}" Text="{Binding Detail}"
+                               Visibility="{Binding Detail, Converter={StaticResource CollapsedWhenEmpty}}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- A flagged cell group: coloured dot, name, and by how much. -->
+        <DataTemplate x:Key="FlaggedGroupTemplate">
+            <DockPanel Margin="0,4">
+                <Ellipse DockPanel.Dock="Left" Width="10" Height="10" Margin="2,5,10,0" VerticalAlignment="Top">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Kind}" Value="critical">
+                                    <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Foreground="{DynamicResource TextFillColorPrimaryBrush}" TextWrapping="Wrap">
+                    <Run FontWeight="SemiBold" Text="{Binding Title, Mode=OneWay}" />
+                    <Run Text="  " />
+                    <Run Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Detail, Mode=OneWay}" />
+                </TextBlock>
+            </DockPanel>
+        </DataTemplate>
     </Application.Resources>
 </Application>

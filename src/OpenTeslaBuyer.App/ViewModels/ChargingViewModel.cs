@@ -7,10 +7,10 @@ using OpenTeslaBuyer.Core.Battery;
 namespace OpenTeslaBuyer.App.ViewModels;
 
 /// <summary>
-/// The charging test page. The test itself runs in Core on every connection (<see cref="ChargeTest"/>), whichever page
-/// is open; this page shows its progress, the cell groups right now and the result.
+/// The charging test tab. The test itself runs in Core on every connection (<see cref="ChargeTest"/>), whichever page
+/// is open; this tab shows its progress, the cell groups right now and the result.
 /// </summary>
-public sealed partial class ChargingViewModel : ObservableObject, IPage
+public sealed partial class ChargingViewModel : ObservableObject
 {
     private readonly ShellViewModel _shell;
     private readonly Metric _current = new("Pack current", "Positive while charging.");
@@ -75,11 +75,6 @@ public sealed partial class ChargingViewModel : ObservableObject, IPage
     {
         _shell = shell;
         Metrics = [_current, _power, _voltage, _soc, _temperature, _added];
-        shell.Diagnostics.Refreshed += (_, _) =>
-        {
-            if (shell.IsCharging)
-                Update();
-        };
     }
 
     public ObservableCollection<Metric> Metrics { get; }
@@ -99,9 +94,6 @@ public sealed partial class ChargingViewModel : ObservableObject, IPage
     }
 
     [RelayCommand]
-    private void GoToDiagnostics() => _shell.SelectedPage = _shell.Pages[0];
-
-    [RelayCommand]
     private void StartOver()
     {
         _shell.Diagnostics.RestartChargeTest();
@@ -116,7 +108,7 @@ public sealed partial class ChargingViewModel : ObservableObject, IPage
             Feedback = Ui.Copy(result.ToText()) ? "Result copied." : "Clipboard is busy; try again.";
     }
 
-    private void Update()
+    internal void Update()
     {
         var diagnostics = _shell.Diagnostics;
         var status = diagnostics.ChargeTest;

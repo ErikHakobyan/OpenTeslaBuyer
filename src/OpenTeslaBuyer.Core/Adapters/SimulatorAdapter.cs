@@ -21,6 +21,15 @@ public enum SimulatedCar
 
     /// <summary>The Model S on an 11 kW home charger: resting, charging, then stopping. Runs four times faster than real time.</summary>
     ModelSCharging,
+
+    /// <summary>The Model 3 on a 32 A, 240 V home charger (for the onboard charger check). Runs four times faster than real time.</summary>
+    Model3HomeCharging,
+
+    /// <summary>
+    /// The parked Model 3 again, ten hours later by its clock, as if connected the next morning: one cell group has lost
+    /// charge overnight. Run the parked Model 3 first to give the overnight test its evening reading.
+    /// </summary>
+    Model3NextMorning,
 }
 
 /// <summary>
@@ -107,14 +116,30 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
 
         public static double GroupMilliOhm(SimulatedCar car, int group)
         {
-            var model3 = car == SimulatedCar.Model3Charging;
+            var model3 = car is SimulatedCar.Model3Charging or SimulatedCar.Model3HomeCharging;
             var typical = model3 ? Model3GroupMilliOhm : ModelSGroupMilliOhm;
             var spread = typical * (1 + 0.03 * Math.Sin(1.7 * group)); // a few percent of normal variation
             return group == WeakGroup ? spread + (model3 ? Model3WeakExtraMilliOhm : ModelSWeakExtraMilliOhm) : spread;
         }
     }
 
+    /// <summary>The next-morning simulator: how much later its clock runs, and the group that lost charge overnight.</summary>
+    public static class OvernightValues
+    {
+        public static readonly TimeSpan Later = TimeSpan.FromHours(10);
+
+        /// <summary>Zero-based: cell group 21.</summary>
+        public const int LeakingGroup = 20;
+
+        public const double LostMillivolts = 9;
+
+        /// <summary>A little lower than the evening's, as a parked car uses some energy overnight.</summary>
+        public const double SocPercent = 63.9;
+    }
+
     private readonly Random _random = new(42);
+    private TimeSpan _clockOffset;
+    private DateTimeOffset _start;
 
     public string Name => "Simulator";
 
@@ -132,6 +157,8 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
             SimulatedCar.ModelS => "Simulating a parked 2015 Model S 85. No hardware involved.",
             SimulatedCar.Model3Charging => "Simulating the 2018 Model 3 at a Supercharger, four times faster than real time: resting, charging, then stopping. No hardware involved.",
             SimulatedCar.ModelSCharging => "Simulating the 2015 Model S 85 on an 11 kW home charger, four times faster than real time: resting, charging, then stopping. No hardware involved.",
+            SimulatedCar.Model3HomeCharging => "Simulating the 2018 Model 3 on a 32 A, 240 V home charger, four times faster than real time: resting, charging, then stopping. No hardware involved.",
+            SimulatedCar.Model3NextMorning => "Simulating the parked Model 3 ten hours later, as if connected the next morning: cell group 21 has lost charge overnight. Run \"Simulator: Model 3\" first for the evening reading. No hardware involved.",
             _ => "Simulating a parked 2018 Model 3 Long Range. No hardware involved.",
         });
         var interval = tick ?? TimeSpan.FromMilliseconds(50);
@@ -140,8 +167,14 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
         var nominalVolts = modelS ? 3.982 : 3.861;
         var bricks = Enumerable.Range(0, brickCount).Select(_ => nominalVolts + (_random.NextDouble() - 0.5) * 0.006).ToArray();
         bricks[56] -= modelS ? 0.024 : 0.012; // one weak cell group; on the Model S enough for a tool warning
+        if (car == SimulatedCar.Model3NextMorning)
+            bricks[OvernightValues.LeakingGroup] -= OvernightValues.LostMillivolts / 1000;
+        _clockOffset = car == SimulatedCar.Model3NextMorning ? OvernightValues.Later : TimeSpan.Zero;
+        _start = DateTimeOffset.UtcNow;
         var vin = SimulatedVin(car);
-        var session = car is SimulatedCar.Model3Charging or SimulatedCar.ModelSCharging ? new ChargingSession(car, DateTimeOffset.UtcNow) : null;
+        var session = car is SimulatedCar.Model3Charging or SimulatedCar.ModelSCharging or SimulatedCar.Model3HomeCharging
+            ? new ChargingSession(car, DateTimeOffset.UtcNow)
+            : null;
 
         for (long t = 0; ; t++)
         {
@@ -153,13 +186,19 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
         }
     }
 
+    /// <summary>The simulated car's clock: 50 ms per tick, whatever the real pace, so runs are repeatable.</summary>
+    private DateTimeOffset Clock(long tick) => _start + _clockOffset + TimeSpan.FromMilliseconds(50 * tick);
+
     private static bool IsModelS(SimulatedCar car) => car is SimulatedCar.ModelS or SimulatedCar.ModelSCharging;
 
     private IEnumerable<CanFrame> Model3Frames(long t, double[] bricks, string vin, LiveState? live = null)
     {
-        var now = live?.Time ?? DateTimeOffset.UtcNow;
+        var now = live?.Time ?? Clock(t);
         const double full = Model3Values.FullPackKWh, buffer = Model3Values.BufferKWh;
-        var soc = live?.Soc ?? Model3Values.SocPercent;
+        var soc = live?.Soc ?? (car == SimulatedCar.Model3NextMorning ? OvernightValues.SocPercent : Model3Values.SocPercent);
+
+        // For the first second the car is waking: the DC-DC converter isn't supplying yet and the 12 V battery stands alone.
+        var waking = live is null && t < 20;
 
         var page = (int)(t % 32);
         Jitter(bricks, page * 3, 3);
@@ -185,6 +224,36 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
 
         if (live is not null && t % 5 == 0)
             yield return CounterFrame(M3.KwhCounter, now, live);
+
+        if (t % 2 == 0)
+        {
+            yield return Frame(M3.DcDcRail, now, d =>
+            {
+                M3.DcDcLowVoltage.Encode(d, waking ? 12.62 : 13.9);
+                M3.DcDcOutputCurrent.Encode(d, waking ? 0 : (live is null ? 22 : 30) + Math.Sin(t * 0.3));
+            }, length: 5);
+            yield return Frame(M3.DcDcStatus, now, d => M3.DcDcMainState.EncodeRaw(d, waking ? 0UL : 1UL));
+        }
+        else
+        {
+            var ac = live?.Ac;
+            yield return Frame(M3.ChargerStatus, now, d =>
+            {
+                M3.ChargerMainState.EncodeRaw(d, ac is null ? 1UL : 6UL);
+                M3.ChargerHvStatus.EncodeRaw(d, ac is null ? 0UL : 2UL);
+                M3.GridConfig.EncodeRaw(d, ac is null ? 0UL : 1UL);
+                M3.PhaseEnabled[0].EncodeRaw(d, ac is null ? 0UL : 1UL);
+                M3.ChargerMaxAcPower.Encode(d, ac is null ? 0 : 11.5);
+                M3.ChargerVariant.EncodeRaw(d, 0); // 48 A single-phase, as on a 2018 Long Range
+            });
+            yield return Frame(M3.ChargeLine, now, d =>
+            {
+                M3.AcVoltage.Encode(d, ac?.Volts ?? 0);
+                M3.AcCurrent.Encode(d, ac?.Amps ?? 0);
+                M3.AcInputPower.Encode(d, ac is null ? 0 : ac.Volts * ac.Amps / 1000);
+                M3.AcCurrentLimit.Encode(d, ac?.LimitAmps ?? 0);
+            }, length: 6);
+        }
 
         if (t % 5 == 0)
         {
@@ -255,9 +324,15 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
             {
                 var page = t / 20 % 4;
                 M3.KwhCounterPage.EncodeRaw(d, (ulong)page);
-                M3.KwhCounterValue.Encode(d, page switch { 0 => 29_900.4, 1 => 11_334.2 + (live?.AddedKWh ?? 0), 2 => 5_210.8, _ => 21_480.6 });
+                M3.KwhCounterValue.Encode(d, page switch
+                {
+                    0 => 29_900.4 + (car == SimulatedCar.Model3HomeCharging ? live?.AddedKWh ?? 0 : 0),
+                    1 => 11_334.2 + (car == SimulatedCar.Model3Charging ? live?.AddedKWh ?? 0 : 0),
+                    2 => 5_210.8,
+                    _ => 21_480.6,
+                });
             });
-            yield return Frame(M3.ParkingBrakeLeft, now, d => M3.TwelveVolt.Encode(d, 13.9));
+            yield return Frame(M3.ParkingBrakeLeft, now, d => M3.TwelveVolt.Encode(d, waking ? 12.62 : 13.9));
             yield return Frame(M3.Odometer, now, d => M3.OdometerKm.Encode(d, 112_345.678), length: 4);
         }
 
@@ -283,7 +358,7 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
 
     private IEnumerable<CanFrame> ModelSFrames(long t, double[] bricks, string vin, LiveState? live = null)
     {
-        var now = live?.Time ?? DateTimeOffset.UtcNow;
+        var now = live?.Time ?? Clock(t);
         const double full = ModelSValues.FullPackKWh, buffer = ModelSValues.BufferKWh;
         var soc = live?.Soc ?? ModelSValues.SocPercent;
 
@@ -310,6 +385,16 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
         // The pack current is not decoded on these cars, so the charging simulator's counters tick every simulated second.
         if (live is not null && t % 5 == 0)
             yield return CounterFrame(SX.KwhCounter, now, live);
+
+        if (t % 2 == 1)
+        {
+            var waking = live is null && t < 20;
+            yield return Frame(SX.DcDc, now, d =>
+            {
+                SX.DcDcOutputVoltage.Encode(d, waking ? 12.5 : 13.8);
+                SX.DcDcOutputCurrent.Encode(d, waking ? 0 : 18 + Math.Round(Math.Sin(t * 0.3)));
+            }, length: 7);
+        }
 
         if (t % 10 == 0)
         {
@@ -363,8 +448,12 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
     });
 
     /// <summary>What a charging simulator broadcasts at one moment. Amps are positive into the pack.</summary>
+    /// <param name="Ac">The AC supply, while charging from one.</param>
     private sealed record LiveState(
-        DateTimeOffset Time, double Amps, double PackVolts, double[] Groups, double Soc, double ChargeTotalKWh, double DischargeTotalKWh, double AddedKWh);
+        DateTimeOffset Time, double Amps, double PackVolts, double[] Groups, double Soc, double ChargeTotalKWh, double DischargeTotalKWh, double AddedKWh,
+        AcSupply? Ac = null);
+
+    private sealed record AcSupply(double Volts, double Amps, double LimitAmps);
 
     /// <summary>
     /// A charging simulator's session: rest, ramp up, charge, ramp down, rest. Every cell group's voltage is its resting
@@ -377,8 +466,15 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
         private const double RampDownSeconds = 2;
         private const double VoltsPerSocPercent = 0.0072;
 
+        private const double HomeVolts = 240;
+        private const double HomeAmps = 32;
+
         private readonly bool _supercharger = car == SimulatedCar.Model3Charging;
-        private readonly double _initialSoc = car == SimulatedCar.Model3Charging ? Model3Values.SocPercent : ModelSValues.SocPercent;
+        private readonly bool _home = car == SimulatedCar.Model3HomeCharging;
+        private readonly bool _model3 = car is SimulatedCar.Model3Charging or SimulatedCar.Model3HomeCharging;
+        private readonly double _initialSoc = car is SimulatedCar.Model3Charging or SimulatedCar.Model3HomeCharging
+            ? Model3Values.SocPercent
+            : ModelSValues.SocPercent;
         private double[]? _ohms;
         private double _seconds;
         private double? _soc;
@@ -386,13 +482,14 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
         private double? _discharged;
         private double _added;
 
-        private double RestAmps => _supercharger ? -1.5 : -1.2;
+        private double RestAmps => _model3 ? -1.5 : -1.2;
 
-        private double ChargeAmps => _supercharger ? 250 : 29;
+        /// <summary>Into the pack: a 7.7 kW home supply delivers about 6.7 kW to a 375 V pack once the car's own loads are met.</summary>
+        private double ChargeAmps => _supercharger ? 250 : _home ? 18 : 29;
 
         private double RampUpSeconds => _supercharger ? 10 : 2;
 
-        private double UsableKWh => _supercharger
+        private double UsableKWh => _model3
             ? Model3Values.FullPackKWh - Model3Values.BufferKWh
             : ModelSValues.FullPackKWh - ModelSValues.BufferKWh;
 
@@ -407,8 +504,8 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
             var packVolts = groups.Sum() + amps * ChargingValues.ConnectionOhm;
 
             var kwh = packVolts * amps * (seconds - _seconds) / 3_600_000;
-            var charged = _charged ?? (_supercharger ? Model3Values.ChargeTotalKWh : ModelSValues.ChargeTotalKWh);
-            var discharged = _discharged ?? (_supercharger ? Model3Values.DischargeTotalKWh : ModelSValues.DischargeTotalKWh);
+            var charged = _charged ?? (_model3 ? Model3Values.ChargeTotalKWh : ModelSValues.ChargeTotalKWh);
+            var discharged = _discharged ?? (_model3 ? Model3Values.DischargeTotalKWh : ModelSValues.DischargeTotalKWh);
             if (kwh > 0)
             {
                 charged += kwh;
@@ -423,7 +520,8 @@ public sealed class SimulatorAdapter(SimulatedCar car = SimulatedCar.Model3, Tim
             _discharged = discharged;
             _soc = soc + kwh / UsableKWh * 100;
             _seconds = seconds;
-            return new LiveState(start + TimeSpan.FromSeconds(seconds), amps, packVolts, groups, _soc.Value, charged, discharged, _added);
+            var ac = _home && amps > 1 ? new AcSupply(HomeVolts, HomeAmps * amps / ChargeAmps, HomeAmps) : null;
+            return new LiveState(start + TimeSpan.FromSeconds(seconds), amps, packVolts, groups, _soc.Value, charged, discharged, _added, ac);
         }
 
         private double AmpsAt(double seconds)

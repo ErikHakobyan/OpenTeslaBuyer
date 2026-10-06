@@ -31,6 +31,7 @@ public sealed class ModelSXProfile(EnergyLayout forcedLayout = EnergyLayout.Auto
         new(Odometer, FramesPerVisit: 1),
         new(Vin, FramesPerVisit: 4),
         new(BrickData, FramesPerVisit: 40),
+        new(DcDc, FramesPerVisit: 1, PollEvery: 2),
         new(Country, FramesPerVisit: 1, PollEvery: 8),
         new(BatteryOdometer, FramesPerVisit: 1, PollEvery: 4),
     ];
@@ -74,6 +75,12 @@ public sealed class ModelSXProfile(EnergyLayout forcedLayout = EnergyLayout.Auto
 
             case BrickData:
                 ProcessBrickData(d, data);
+                break;
+
+            case DcDc:
+                // No separate 12 V reading on these cars: the converter's output is the 12 V system while awake.
+                data.DcDcVolts = Model3Profile.Plausible(DcDcOutputVoltage.Decode(d), 5, 20) ?? data.DcDcVolts;
+                data.DcDcAmps = DcDcOutputCurrent.Decode(d) ?? data.DcDcAmps;
                 break;
 
             case Vin:

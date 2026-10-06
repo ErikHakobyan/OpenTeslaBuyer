@@ -75,6 +75,13 @@ public static class BuyerCheck
         return string.Join(", ", parts);
     }
 
+    /// <summary>The worst status among items that were judged; not available when none was.</summary>
+    public static CheckStatus Overall(IReadOnlyList<CheckItem> items) =>
+        items.Any(i => i.Status == CheckStatus.Fail) ? CheckStatus.Fail
+        : items.Any(i => i.Status == CheckStatus.Attention) ? CheckStatus.Attention
+        : items.Any(i => i.Status == CheckStatus.Pass) ? CheckStatus.Pass
+        : CheckStatus.NotAvailable;
+
     public static string Describe(CheckStatus status) => status switch
     {
         CheckStatus.Pass => "Pass",

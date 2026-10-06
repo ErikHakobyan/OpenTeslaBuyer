@@ -81,6 +81,45 @@ public sealed class BatteryData
 
     public double? RatedWhPerKm { get; set; }
 
+    /// <summary>AC supply voltage while charging from an AC charger (Model 3 platform).</summary>
+    public double? AcVolts { get; set; }
+
+    public double? AcAmps { get; set; }
+
+    public double? AcInputKw { get; set; }
+
+    /// <summary>The most AC current charging may draw, as the charger sees it.</summary>
+    public double? AcCurrentLimitAmps { get; set; }
+
+    /// <summary>Raw <c>PCS_chgMainState</c>: 6 = charging, 8 = faulted.</summary>
+    public int? ChargerState { get; set; }
+
+    /// <summary>Raw <c>PCS_hvChargeStatus</c>: 2 = enabled, 3 = faulted.</summary>
+    public int? ChargerHvStatus { get; set; }
+
+    /// <summary>Raw <c>PCS_gridConfig</c>: 1 = single phase, 2 or 3 = three phase.</summary>
+    public int? GridConfig { get; set; }
+
+    /// <summary>Which of the charger's three phase modules are on (bit 0 = A, 1 = B, 2 = C).</summary>
+    public int? ChargerPhases { get; set; }
+
+    /// <summary>Raw <c>PCS_hwVariantType</c>: 0 = 48 A single-phase, 1 = 32 A single-phase, 2 = three-phase.</summary>
+    public int? ChargerVariant { get; set; }
+
+    public double? ChargerMaxAcKw { get; set; }
+
+    /// <summary>The DC-DC converter's low-voltage output, which supplies the 12 V system while the car is awake.</summary>
+    public double? DcDcVolts { get; set; }
+
+    public double? DcDcAmps { get; set; }
+
+    /// <summary>Raw <c>PCS_dcdcMainState</c>: 1 = supplying 12 V, 6 = faulted.</summary>
+    public int? DcDcState { get; set; }
+
+    public bool? DcDcFaulted { get; set; }
+
+    public bool? DcDcLimited { get; set; }
+
     /// <summary>Cell groups in series, once the profile has seen every page of the cell voltage message.</summary>
     public int? CellGroupCount { get; set; }
 

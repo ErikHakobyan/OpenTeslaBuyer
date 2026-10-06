@@ -154,11 +154,11 @@ public class ChargeTestTests
         var data = new BatteryData();
         var health = HealthCalculator.Evaluate(data);
 
-        var html = ReportWriter.ToHtml(data, health, false, Start, chargeTest: result);
+        var html = ReportWriter.ToHtml(data, health, false, Start, tests: new SessionTests(result));
         Assert.Contains("<h2>Charging test</h2>", html);
         Assert.Contains($"Cell group {Weak + 1}:", html);
 
-        var text = ReportWriter.ToText(data, health, false, chargeTest: result);
+        var text = ReportWriter.ToText(data, health, false, tests: new SessionTests(result));
         Assert.Contains("Charging test: Cell group 41 has", text);
         Assert.Contains("2 measurements", text);
     }

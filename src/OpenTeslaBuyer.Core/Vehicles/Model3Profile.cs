@@ -30,6 +30,10 @@ public sealed class Model3Profile(EnergyLayout forcedLayout = EnergyLayout.Auto)
         new(Odometer, FramesPerVisit: 1),
         new(Vin, FramesPerVisit: 6),
         new(BrickVoltages, FramesPerVisit: 64),
+        new(ChargerStatus, FramesPerVisit: 1, PollEvery: 2),
+        new(ChargeLine, FramesPerVisit: 1, PollEvery: 2),
+        new(DcDcRail, FramesPerVisit: 1, PollEvery: 2),
+        new(DcDcStatus, FramesPerVisit: 1, PollEvery: 4),
         new(BmsStatus, FramesPerVisit: 1, PollEvery: 2),
         new(KwhCountersMultiplexed, FramesPerVisit: 8, PollEvery: 4),
         new(ParkingBrakeLeft, FramesPerVisit: 1, PollEvery: 4),
@@ -139,6 +143,34 @@ public sealed class Model3Profile(EnergyLayout forcedLayout = EnergyLayout.Auto)
 
             case ParkingBrakeLeft:
                 data.TwelveVoltVolts = Plausible(TwelveVolt.Decode(d), 5, 20) ?? data.TwelveVoltVolts;
+                break;
+
+            case ChargeLine:
+                data.AcVolts = Plausible(AcVoltage.Decode(d), 0, 500) ?? data.AcVolts;
+                data.AcAmps = AcCurrent.Decode(d) ?? data.AcAmps;
+                data.AcInputKw = AcInputPower.Decode(d) ?? data.AcInputKw;
+                data.AcCurrentLimitAmps = AcCurrentLimit.Decode(d) ?? data.AcCurrentLimitAmps;
+                break;
+
+            case ChargerStatus:
+                data.ChargerState = (int)ChargerMainState.Raw(d);
+                data.ChargerHvStatus = (int)ChargerHvStatus.Raw(d);
+                data.GridConfig = (int)GridConfig.Raw(d);
+                data.ChargerPhases = PhaseEnabled.Select((phase, i) => (int)phase.Raw(d) << i).Sum();
+                data.ChargerMaxAcKw = ChargerMaxAcPower.Decode(d) ?? data.ChargerMaxAcKw;
+                if (ChargerVariant.Fits(d) && ChargerVariant.Raw(d) is var variant and < 3)
+                    data.ChargerVariant = (int)variant;
+                break;
+
+            case DcDcRail:
+                data.DcDcVolts = Plausible(DcDcLowVoltage.Decode(d), 5, 20) ?? data.DcDcVolts;
+                data.DcDcAmps = DcDcOutputCurrent.Decode(d) ?? data.DcDcAmps;
+                break;
+
+            case DcDcStatus:
+                data.DcDcState = (int)DcDcMainState.Raw(d);
+                data.DcDcFaulted = DcDcFaulted.Raw(d) == 1;
+                data.DcDcLimited = DcDcOutputLimited.Raw(d) == 1;
                 break;
         }
     }

@@ -107,9 +107,13 @@ Bluetooth adapters show up as a COM port after pairing in Windows. If there are 
 
 Unplug the adapter when you're done: the diagnostic port is powered and can keep the car awake.
 
-No car nearby? Choose **Simulator: Model 3** or **Simulator: Model S**. **Simulator: Model 3 charging** and
-**Simulator: Model S charging** play a whole charging test (rest, charge, stop) four times faster than real time, with
-one weak cell group hidden in the pack.
+No car nearby? Choose **Simulator: Model 3** or **Simulator: Model S**. The other simulators show the tests:
+
+- **Model 3 charging** (Supercharger) and **Model S charging** (home) play a whole charging test four times faster
+  than real time, with one weak cell group hidden in the pack.
+- **Model 3 home charging** charges from a 32 A, 240 V supply, for the onboard charger check.
+- **Model 3 next morning** is the parked Model 3 ten hours later by its clock, with one group that lost charge
+  overnight: run **Simulator: Model 3** first for the evening reading, then this one.
 
 ### Troubleshooting
 
@@ -129,10 +133,10 @@ The menu on the left has six pages:
 | Page | What it does |
 |---|---|
 | **Diagnostics** | The main screen: connect, live data, health, Buyer check, alerts. |
-| **Charging test** | Finds weak cell groups by comparing each one at rest and while charging (see below). |
+| **Tests** | Checks that run with the car parked: charging test, overnight test, onboard charger, 12 V system (see below). |
 | **Recordings** | Every CAN recording, with car, length and notes. **Replay** plays one on Diagnostics; **Add recordings…** brings in candump logs from other tools. |
 | **Reports** | Every saved check, searchable. Each keeps its full report, so it opens again without the car; also *Save as…* and *Copy summary*. |
-| **Car history** | Every car checked: health over time, saved checks, alert history across sessions, its recordings, and your notes. |
+| **Car history** | Every car checked: health, capacity, cell spread, insulation and pack resistance over time; cell groups that keep standing out; saved checks, alert history across sessions, its recordings, and your notes. |
 | **Settings** | Data folders, what is saved automatically, light or dark theme, units, database backup. |
 
 A **check is saved when you disconnect** from a car (from replays and simulators only if enabled in Settings).
@@ -141,7 +145,7 @@ A **check is saved when you disconnect** from a car (from replays and simulators
 
 | Data | Location |
 |---|---|
-| Cars, saved checks with their reports, alert history, recordings list, per-car pack choice and notes | `data.db` (SQLite) in `%LOCALAPPDATA%\OpenTeslaBuyer`; *Settings › Change…* copies it elsewhere, e.g. OneDrive |
+| Cars, saved checks with their reports and test results, alert history, parked cell readings, recordings list, per-car pack choice and notes | `data.db` (SQLite) in `%LOCALAPPDATA%\OpenTeslaBuyer`; *Settings › Change…* copies it elsewhere, e.g. OneDrive |
 | CAN recordings | `Documents\OpenTeslaBuyer\Recordings` |
 | Reports opened or saved from the app | `Documents\OpenTeslaBuyer\Reports` |
 | Preferences (adapter, port, units) | `%LOCALAPPDATA%\OpenTeslaBuyer\settings.json` |
@@ -153,11 +157,17 @@ using `Documents\TeslaBatteryHealth` if recordings are already there.
 Data from earlier versions (alert history JSON files, per-VIN capacity choices) is imported into the database on first start;
 the old files are left in place. The database code is in Core (`Storage/AppDatabase.cs`), so a future cross-platform app can use it.
 
-## Charging test
+## Tests
+
+The **Tests** page holds checks that run with the car parked, in the background while connected, whichever page is open.
+Their results go into the report and the saved check, and Car history follows them over time. The tool only listens:
+it never starts, stops or changes anything.
+
+### Charging test
 
 ![The charging test finding a cell group with higher resistance (simulator)](docs/images/charging-test.png)
 
-The **Charging test** page finds cell groups with higher internal resistance than the rest of the pack. That is how cells
+The **Charging test** tab finds cell groups with higher internal resistance than the rest of the pack. That is how cells
 age, and how a damaged group shows itself. It matters because the BMS protects the weakest group, so a single weak
 group can make the car limit power and charging. The car stays parked, and the tool only listens.
 
@@ -183,6 +193,66 @@ per-group average and the percentages are approximate.
   counter (`0x3D2`). The counter lags by several seconds, so the test skips the samples next to each change.
   The result is less precise but finds the same groups.
 - Driving is ignored: the test only compares resting with charging.
+
+### Overnight test
+
+![The overnight test finding a cell group that lost charge (simulator)](docs/images/overnight-test.png)
+
+Finds a cell group that **loses charge faster than the others** while the car stands: an internal leak (high
+self-discharge), an early sign of a failing cell that the other tests can't see.
+
+**Running it:** connect in the evening with the car parked (not charging, climate off). After about a minute at rest
+the tool saves a reading of every cell group. Connect again the same way at least 4 hours later, ideally the next
+morning, and the comparison appears. Any two readings 4 hours to 30 days apart work, and every connection saves a new
+one, so the test also runs on its own when you check a car regularly.
+
+**How it works:** each reading averages every group over half a minute of rest, drawing no more than a few amps, before
+any charging that connection (charging leaves the cells settling for hours). Each group is measured against the pack's
+median group, so the pack's own overnight drain and temperature changes cancel out. A group is flagged when it fell at
+least 2 mV behind the others, well outside their spread, at 3 mV per day or more ("much more" from 8 mV per day),
+and ended below the typical group: the BMS balances by bleeding the highest groups down, which also shows as a drop.
+Iron-phosphate (LFP) packs barely change voltage with charge, so on them only large losses show; the result says so.
+
+### Onboard charger
+
+![The onboard charger check while home charging (simulator)](docs/images/charger-check.png)
+
+Checks the **onboard charger** while charging from an AC supply (home charger, wall connector, public AC charger) on
+the Model 3 platform. A failed phase module is a common and costly fault that only shows as slower charging.
+Superchargers bypass the onboard charger, so they don't test it. It reads the charger's own messages (`0x204`,
+`0x264`) and reports:
+
+- **Faults** the charger raises during the connection.
+- **Phases:** on a three-phase supply all three of the charger's phase modules should be on.
+- **Current drawn** against the most the charger may draw. Less is normal if the charging current is turned down in
+  the car, or near full.
+- **Power reaching the battery:** the pack's power against the supply's, normally 85–93%. Heating the battery or the
+  climate while charging lowers it.
+
+The 2012–2021 Model S/X charger isn't decoded yet.
+
+### 12 V system
+
+![The 12 V check (simulator)](docs/images/twelve-volt.png)
+
+Checks the **DC-DC converter**, which keeps the 12 V system charged while the car is awake, and the low-voltage battery
+behind it: weak 12 V batteries and failing converters are among the most common reasons a Tesla won't wake.
+
+- **DC-DC converter:** faults, output voltage (about 13.5–15 V, or 15–16 V with a lithium-ion battery) and whether it
+  had to limit its output (`0x224`, `0x2B4`; `0x210` on the 2012–2021 Model S/X).
+- **12 V battery at wake-up:** connect while the car is asleep, then open a door: for a moment the battery stands alone
+  before the converter takes over. A charged lead-acid battery rests at about 12.6 V.
+- **12 V load:** about 15–50 A is normal for an awake car.
+- **12 V battery:** its type (from the car's configuration) and the car's age; lead-acid batteries usually last
+  3–5 years. 2021+ Model S/X and 2022+ Model 3/Y have a lithium-ion low-voltage battery meant to last the car's life.
+
+### Trends
+
+![Car history with trends and the cell groups that stood out (simulator)](docs/images/car-history.png)
+
+Each saved check keeps its test results, so **Car history** charts state of health, capacity, cell spread, insulation
+resistance and pack resistance across checks, and lists the cell groups any charging or overnight test flagged, with
+how often. A group that stands out in more than one test is worth showing to a service centre.
 
 ## Buyer check
 
@@ -276,7 +346,8 @@ tests/OpenTeslaBuyer.Core.Tests
 - `Vehicles/EnergyStatus.cs`: the three energy-message layouts and their auto-detection.
 - `Vehicles/VehicleProfiles.cs`: platform auto-detection (`AutoDetectProfile`).
 - `Battery/HealthCalculator.cs`: the formulas above.
-- `Battery/ChargeTest.cs`: the charging test, fed every decoded frame by `BatteryMonitor`.
+- `Battery/ChargeTest.cs`, `CellDrift.cs`, `ChargerCheck.cs`, `TwelveVoltCheck.cs`: the tests, fed every decoded frame
+  by `BatteryMonitor`; `Storage/TestSummary.cs` keeps their results with saved checks and builds the trends.
 - `Alerts/`: the alert catalog (`alert-catalog-model3.json`, embedded), descriptions, this tool's checks
   (`ToolDiagnostics`), current/history tracking (`AlertTracker`) and per-VIN storage (`AlertHistoryStore`).
 
