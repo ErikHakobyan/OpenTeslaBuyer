@@ -9,6 +9,10 @@ HTML report (print it to PDF from the browser).
 It **only listens** to the car's CAN bus. It never sends anything to the car, needs no Tesla login and
 does not use Service Mode or Toolbox.
 
+**OpenTeslaBuyer is free and open source, and everyone is welcome to make it better.** Try it on your car, report
+what you find, add support for another model, improve the screens or the explanations: every contribution helps
+people buy and keep their Teslas with confidence. See [Contributing](#contributing) to get started.
+
 ## What is supported
 
 | Vehicle | Decoder | Status |
@@ -285,11 +289,35 @@ dotnet test
 dotnet run --project src/OpenTeslaBuyer.App
 ```
 
+## Contributing
+
+Everyone is welcome: owners, buyers, mechanics and developers alike, whether it's your first open-source contribution
+or your hundredth. Some ways to help:
+
+- **Try it on your car** and [open an issue](../../issues/new/choose) with what worked and what looked wrong. The
+  code is built from community decoding and simulators, so real cars are the most valuable test there is.
+- **Share a recording** (*Record* on the Diagnostics page) so decoding can be checked and extended offline. A
+  recording contains your VIN; mention in the issue if you'd rather share it privately.
+- **Add or fix a model**: Highland, Juniper, Cybertruck and the 2021+ Model S/X all need real-car verification.
+- **Improve the app**: clearer explanations, translations, accessibility, new checks for buyers.
+- **Build the cross-platform app**: all the logic is in `OpenTeslaBuyer.Core`, ready for a MAUI or Avalonia front end.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and send a pull request. The one firm rule: the
+tool stays **read-only**. Nothing that transmits on the car's bus or changes its configuration will be merged.
+
+## License
+
+[MIT](LICENSE): use it, change it, share it.
+
+OpenTeslaBuyer is an independent community project, not affiliated with or endorsed by Tesla, Inc. Tesla and
+Model S, 3, X and Y are trademarks of Tesla, Inc. Readings come from community reverse engineering and are not an
+official Tesla diagnosis.
+
 ## Credits
 
 Signal definitions come from community reverse engineering:
 [joshwardell/model3dbc](https://github.com/joshwardell/model3dbc) (MIT),
-[onyx-m2/onyx-m2-dbc](https://github.com/onyx-m2/onyx-m2-dbc), the
+[onyx-m2/onyx-m2-dbc](https://github.com/onyx-m2/onyx-m2-dbc) (no licence stated), the
 [Tesla Owners Online "Diagnostic Port and Data Access" thread](https://www.teslaownersonline.com/threads/diagnostic-port-and-data-access.7502/),
 the alert-matrix definitions in onyx-m2-dbc (alert names are Tesla's own),
 wk057's "Tesla Model S CAN Deciphering" notes as transcribed in
