@@ -47,6 +47,14 @@ internal static class Ui
             OpenFolder(Path.GetDirectoryName(path)!);
     }
 
+    /// <summary>Switches every window to the theme straight away.</summary>
+    public static void ApplyTheme(AppTheme theme) => Application.Current.ThemeMode = theme switch
+    {
+        AppTheme.Light => ThemeMode.Light,
+        AppTheme.Dark => ThemeMode.Dark,
+        _ => ThemeMode.System,
+    };
+
     public static string When(DateTimeOffset time) => time.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
 
     public static string Size(long bytes) => bytes switch

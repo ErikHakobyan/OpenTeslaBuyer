@@ -29,6 +29,10 @@ public sealed partial class ShellViewModel : ObservableObject
     public ShellViewModel()
     {
         Services = new AppServices();
+
+        // App.xaml starts with the Windows setting; only a chosen light or dark theme needs applying.
+        if (Services.Settings.Theme != AppTheme.System)
+            Ui.ApplyTheme(Services.Settings.Theme);
         Diagnostics = new MainViewModel(Services);
         Charging = new ChargingViewModel(this);
         Recordings = new RecordingsViewModel(Services, this);

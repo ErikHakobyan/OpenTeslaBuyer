@@ -133,7 +133,7 @@ The menu on the left has six pages:
 | **Recordings** | Every CAN recording, with car, length and notes. **Replay** plays one on Diagnostics; **Add recordings…** brings in candump logs from other tools. |
 | **Reports** | Every saved check, searchable. Each keeps its full report, so it opens again without the car; also *Save as…* and *Copy summary*. |
 | **Car history** | Every car checked: health over time, saved checks, alert history across sessions, its recordings, and your notes. |
-| **Settings** | Data folders, what is saved automatically, units, database backup. |
+| **Settings** | Data folders, what is saved automatically, light or dark theme, units, database backup. |
 
 A **check is saved when you disconnect** from a car (from replays and simulators only if enabled in Settings).
 

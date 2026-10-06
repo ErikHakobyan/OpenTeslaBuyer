@@ -6,7 +6,10 @@ using OpenTeslaBuyer.Core.Storage;
 
 namespace OpenTeslaBuyer.App.ViewModels;
 
-/// <summary>Where data is kept, what is saved automatically, units, and backups.</summary>
+/// <summary>A choice in the theme picker.</summary>
+public sealed record ThemeOption(AppTheme Theme, string Title);
+
+/// <summary>Where data is kept, what is saved automatically, appearance, units, and backups.</summary>
 public sealed partial class SettingsViewModel(AppServices services, MainViewModel diagnostics) : ObservableObject, IPage
 {
     [ObservableProperty]
@@ -39,6 +42,26 @@ public sealed partial class SettingsViewModel(AppServices services, MainViewMode
     {
         get => services.Settings.AutoRecord;
         set => Update(() => services.Settings.AutoRecord = value);
+    }
+
+    public IReadOnlyList<ThemeOption> Themes { get; } =
+    [
+        new(AppTheme.System, "Match Windows"),
+        new(AppTheme.Light, "Light"),
+        new(AppTheme.Dark, "Dark"),
+    ];
+
+    public ThemeOption SelectedTheme
+    {
+        get => Themes.First(t => t.Theme == services.Settings.Theme);
+        set
+        {
+            if (value is null || value.Theme == services.Settings.Theme)
+                return;
+
+            Update(() => services.Settings.Theme = value.Theme);
+            Ui.ApplyTheme(value.Theme);
+        }
     }
 
     public string Version { get; } = typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "";
@@ -110,7 +133,7 @@ public sealed partial class SettingsViewModel(AppServices services, MainViewMode
         {
             Title = "Back up the database",
             Filter = "Database (*.db)|*.db",
-            FileName = $"tesla-battery-health-{DateTime.Now:yyyyMMdd}.db",
+            FileName = $"openteslabuyer-{DateTime.Now:yyyyMMdd}.db",
         };
         if (dialog.ShowDialog() != true)
             return;

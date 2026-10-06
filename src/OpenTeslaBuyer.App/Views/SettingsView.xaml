@@ -73,6 +73,19 @@
 
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
+                        <TextBlock Style="{StaticResource CardTitle}" Text="Appearance" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource FieldLabel}" Text="Theme" />
+                            <ComboBox Width="200" ItemsSource="{Binding Themes}" SelectedItem="{Binding SelectedTheme}" DisplayMemberPath="Title"
+                                      AutomationProperties.Name="Theme" />
+                        </StackPanel>
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource Caption}"
+                                   Text="Match Windows follows the light or dark setting in Windows. The choice applies straight away and is remembered." />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
                         <TextBlock Style="{StaticResource CardTitle}" Text="Units" />
                         <CheckBox Content="Show distances in miles" IsChecked="{Binding Diagnostics.UseMiles}" />
                     </StackPanel>

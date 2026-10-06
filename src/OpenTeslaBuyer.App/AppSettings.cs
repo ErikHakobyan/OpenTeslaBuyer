@@ -6,6 +6,14 @@ using OpenTeslaBuyer.Core.Battery;
 
 namespace OpenTeslaBuyer.App;
 
+/// <summary>The app's colours: follow Windows, or always light or dark.</summary>
+public enum AppTheme
+{
+    System,
+    Light,
+    Dark,
+}
+
 /// <summary>Connection preferences remembered between runs, in %LOCALAPPDATA%\OpenTeslaBuyer\settings.json.</summary>
 internal sealed class AppSettings
 {
@@ -51,6 +59,9 @@ internal sealed class AppSettings
 
     /// <summary>Start recording automatically whenever a real adapter connects.</summary>
     public bool AutoRecord { get; set; }
+
+    /// <summary>Light, dark, or the Windows setting (the default).</summary>
+    public AppTheme Theme { get; set; }
 
     public static AppSettings Load()
     {
