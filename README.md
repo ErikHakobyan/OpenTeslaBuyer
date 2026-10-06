@@ -9,9 +9,18 @@ HTML report (print it to PDF from the browser).
 It **only listens** to the car's CAN bus. It never sends anything to the car, needs no Tesla login and
 does not use Service Mode or Toolbox.
 
+![OpenTeslaBuyer reading a Model 3 (simulator): state of health, live battery data, every cell group and the buyer check](docs/images/diagnostics.png)
+
 **OpenTeslaBuyer is free and open source, and everyone is welcome to make it better.** Try it on your car, report
 what you find, add support for another model, improve the screens or the explanations: every contribution helps
 people buy and keep their Teslas with confidence. See [Contributing](#contributing) to get started.
+
+## Download
+
+Get **OpenTeslaBuyer-…-win-x64.zip** from the [latest release](https://github.com/ErikHakobyan/OpenTeslaBuyer/releases/latest),
+unzip it and run **OpenTeslaBuyer.exe**. Nothing needs installing (Windows 10 or 11, 64-bit). The app isn't code-signed
+yet, so Windows SmartScreen may warn you: choose *More info › Run anyway*. To build it yourself instead, see
+[Project layout](#project-layout).
 
 ## What is supported
 
@@ -145,6 +154,8 @@ Data from earlier versions (alert history JSON files, per-VIN capacity choices) 
 the old files are left in place. The database code is in Core (`Storage/AppDatabase.cs`), so a future cross-platform app can use it.
 
 ## Charging test
+
+![The charging test finding a cell group with higher resistance (simulator)](docs/images/charging-test.png)
 
 The **Charging test** page finds cell groups with higher internal resistance than the rest of the pack. That is how cells
 age, and how a damaged group shows itself. It matters because the BMS protects the weakest group, so a single weak

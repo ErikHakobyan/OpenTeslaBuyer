@@ -1,0 +1,48 @@
+name: Release
+
+# Push a tag such as v0.2.0 to build the Windows app and publish it as a GitHub release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test OpenTeslaBuyer.sln --configuration Release
+
+      - name: Publish a single self-contained exe
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          dotnet publish src/OpenTeslaBuyer.App/OpenTeslaBuyer.App.csproj -c Release -r win-x64 --self-contained true \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true \
+            -p:DebugType=none -p:Version="${version%%-*}" -p:InformationalVersion="$version" -o publish
+          cp README.md LICENSE publish/
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path publish/* -DestinationPath "OpenTeslaBuyer-${{ github.ref_name }}-win-x64.zip"
+
+      - name: Create the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tags like v0.2.0-beta are pre-releases. 0.x versions are previews (not yet verified on many cars) but stay
+          # normal releases, so the README's "latest release" link finds them.
+          prerelease=""
+          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease="--prerelease"
+          title="OpenTeslaBuyer $GITHUB_REF_NAME"
+          [[ "$GITHUB_REF_NAME" == v0.* ]] && title="$title (preview)"
+          gh release create "$GITHUB_REF_NAME" "OpenTeslaBuyer-$GITHUB_REF_NAME-win-x64.zip" \
+            --title "$title" --notes-file .github/release-notes.md --generate-notes $prerelease

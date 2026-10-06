@@ -50,6 +50,12 @@ No car? Pick one of the simulators as the source on the Diagnostics page.
 
 The build and tests run automatically on every pull request.
 
+## Releasing
+
+Pushing a version tag (for example `git tag v0.2.0 && git push origin v0.2.0`) runs the tests, builds a single
+self-contained `OpenTeslaBuyer.exe` and publishes it as a GitHub release with notes generated from the merged pull
+requests. Tags with a suffix, such as `v0.2.0-beta`, become pre-releases.
+
 ## Project layout
 
 See *Project layout* in the [README](README.md#project-layout) for where things live, and *How the numbers are

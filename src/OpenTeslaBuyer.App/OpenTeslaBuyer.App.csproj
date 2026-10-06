@@ -6,7 +6,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <AssemblyName>OpenTeslaBuyer</AssemblyName>
+    <RootNamespace>OpenTeslaBuyer.App</RootNamespace>
     <AssemblyTitle>OpenTeslaBuyer</AssemblyTitle>
+    <Product>OpenTeslaBuyer</Product>
+    <Description>Open-source Tesla battery health and used-car inspection tool.</Description>
+    <Copyright>Copyright (c) 2026 Erik Hakobyan and OpenTeslaBuyer contributors. MIT License.</Copyright>
+    <!-- Overridden by the release workflow with the tag's version. -->
+    <Version>0.1.0</Version>
     <!-- Application.ThemeMode (Fluent light/dark theme) is still marked experimental in WPF. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
