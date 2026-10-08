@@ -9,7 +9,24 @@ HTML report (print it to PDF from the browser).
 It **only listens** to the car's CAN bus. It never sends anything to the car, needs no Tesla login and
 does not use Service Mode or Toolbox.
 
-![OpenTeslaBuyer reading a Model 3 (simulator): state of health, live battery data, every cell group and the buyer check](docs/images/diagnostics.png)
+![OpenTeslaBuyer, slide by slide: Diagnostics, the charging, overnight, charger and 12 V tests, and Car history (simulator)](docs/images/slideshow.png)
+
+<details>
+<summary><b>All screenshots</b> (click one for full size)</summary>
+<br>
+<table>
+  <tr>
+    <td align="center"><a href="docs/images/diagnostics.png"><img src="docs/images/diagnostics.png" width="280" alt="Diagnostics"></a><br>Diagnostics</td>
+    <td align="center"><a href="docs/images/charging-test.png"><img src="docs/images/charging-test.png" width="280" alt="Charging test"></a><br>Charging test</td>
+    <td align="center"><a href="docs/images/overnight-test.png"><img src="docs/images/overnight-test.png" width="280" alt="Overnight test"></a><br>Overnight test</td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/images/charger-check.png"><img src="docs/images/charger-check.png" width="280" alt="Onboard charger check"></a><br>Onboard charger</td>
+    <td align="center"><a href="docs/images/twelve-volt.png"><img src="docs/images/twelve-volt.png" width="280" alt="12 V check"></a><br>12 V system</td>
+    <td align="center"><a href="docs/images/car-history.png"><img src="docs/images/car-history.png" width="280" alt="Car history"></a><br>Car history</td>
+  </tr>
+</table>
+</details>
 
 **OpenTeslaBuyer is free and open source, and everyone is welcome to make it better.** Try it on your car, report
 what you find, add support for another model, improve the screens or the explanations: every contribution helps
@@ -361,6 +378,12 @@ The alert catalog is generated from a DBC file:
 
 ```bash
 dotnet run tools/GenerateAlertCatalog.cs -- path/to/tesla_model3.dbc src/OpenTeslaBuyer.Core/Alerts/alert-catalog-model3.json
+```
+
+The README's screenshot slideshow is rebuilt from the images in `docs/images` (after retaking screenshots):
+
+```bash
+dotnet run tools/MakeSlideshow.cs -- docs/images/slideshow.png
 ```
 
 To support another platform, add an `IVehicleProfile` (which IDs to listen to and how to decode them),
